@@ -11,6 +11,12 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- Get character configs
 local CharacterConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("CharacterConfig"))
 
+-- Load game loop and other managers
+local GameLoopManager = require(script:WaitForChild("GameLoopManager"))
+local NpcSpawner = require(script:WaitForChild("NpcSpawner"))
+local ObjectiveManager = require(script:WaitForChild("ObjectiveManager"))
+local RescueManager = require(script:WaitForChild("RescueManager"))
+
 -- Initialize folders
 local eventsFolder = ReplicatedStorage:FindFirstChild("Events")
 if not eventsFolder then
@@ -523,7 +529,6 @@ local function autoGroupSid(visualTemplate: Model)
 	end
 end
 
-
 --- Build a playable custom character from a model template
 local function buildCustomCharacter(template: Model, characterName: string, targetHeight: number): Model?
 	local config = CharacterConfig[characterName]
@@ -635,7 +640,14 @@ local function buildCustomCharacter(template: Model, characterName: string, targ
 		for _, desc in model:GetDescendants() do
 			if desc:IsA("BasePart") then
 				local name = desc.Name:lower()
-				if name:find("nose") or name:find("mouth") or name:find("eye") or name:find("jaw") or name:find("teeth") or name:find("snout") then
+				if
+					name:find("nose")
+					or name:find("mouth")
+					or name:find("eye")
+					or name:find("jaw")
+					or name:find("teeth")
+					or name:find("snout")
+				then
 					table.insert(faceParts, desc.Position)
 				end
 			end
@@ -888,6 +900,37 @@ toggleWingsEvent.OnServerEvent:Connect(function(player)
 	end
 end)
 
+-- Create the ToggleFlashlight RemoteEvent
+local toggleFlashlightEvent = eventsFolder:FindFirstChild("ToggleFlashlight")
+if not toggleFlashlightEvent then
+	toggleFlashlightEvent = Instance.new("RemoteEvent")
+	toggleFlashlightEvent.Name = "ToggleFlashlight"
+	toggleFlashlightEvent.Parent = eventsFolder
+end
+
+toggleFlashlightEvent.OnServerEvent:Connect(function(player)
+	local char = player.Character
+	if char and char:GetAttribute("CharacterName") == "Sid" then
+		local head = char:FindFirstChild("Head")
+		if head then
+			local light = head:FindFirstChild("FlashlightLight")
+			if light then
+				light:Destroy()
+			else
+				light = Instance.new("SpotLight")
+				light.Name = "FlashlightLight"
+				light.Color = Color3.fromRGB(255, 255, 220)
+				light.Brightness = 3.5
+				light.Range = 70
+				light.Angle = 45
+				light.Face = Enum.NormalId.Front
+				light.Shadows = true
+				light.Parent = head
+			end
+		end
+	end
+end)
+
 -- Create the CaptureToy RemoteEvent
 local captureToyEvent = eventsFolder:FindFirstChild("CaptureToy")
 if not captureToyEvent then
@@ -907,116 +950,27 @@ captureToyEvent.OnServerEvent:Connect(function(player, targetToy)
 		return
 	end
 
--- Create the BindableEvent for round end signaling
-local endRoundBindable = eventsFolder:FindFirstChild("EndRoundBindable")
-if not endRoundBindable then
-	endRoundBindable = Instance.new("Bindable") -- Wait, in Roblox it's BindableEvent
-	-- Let's make sure it is a BindableEvent
-	local bindable = Instance.new("BindableEvent")
-	bindable.Name = "EndRoundBindable"
-	bindable.Parent = eventsFolder
-	endRoundBindable = bindable
-end
-
--- Create the StunHunter RemoteEvent
-local stunHunterEvent = eventsFolder:FindFirstChild("StunHunter")
-if not stunHunterEvent then
-	stunHunterEvent = Instance.new("RemoteEvent")
-	stunHunterEvent.Name = "StunHunter"
-	stunHunterEvent.Parent = eventsFolder
-end
-
-captureToyEvent.OnServerEvent:Connect(function(player, targetToy)
-	local char = player.Character
-	if not char or char:GetAttribute("CharacterName") ~= "Sid" then
-		return
-	end
-
-	-- Verify Sid is not currently stunned (WalkSpeed = 0)
-	local sidHum = char:FindFirstChildOfClass("Humanoid")
-	if sidHum and sidHum.WalkSpeed == 0 then
-		return
-	end
-
-	-- Make sure target is a valid custom toy character
-	if not targetToy or not targetToy:IsA("Model") or not targetToy:GetAttribute("IsCustomCharacter") then
-		return
-	end
-
 	local targetName = targetToy:GetAttribute("CharacterName")
 	if targetName == "Sid" then
 		return
 	end
 
-	-- Check if target is already captured/caged
-	if targetToy:GetAttribute("Captured") then
+	-- If already captured, don't recapture
+	if targetToy:GetAttribute("IsCaptured") == true then
 		return
 	end
 
+	local isNPCToy = targetToy:GetAttribute("IsNPCToy") or false
 	local isLayingDown = targetToy:GetAttribute("IsLayingDown") or false
 
-	if not isLayingDown then
-		-- SUCCESS: Sid caught a toy moving!
-		print("[ToyStory Server] Sid captured moving toy:", targetName)
-
-		-- Play cartoon/crunch capture sound
-		local head = char:FindFirstChild("Head")
-		if head then
-			local sound = Instance.new("Sound")
-			sound.SoundId = "rbxassetid://2801263" -- classic crunch/destruction sound
-			sound.Volume = 1.0
-			sound.Parent = head
-			sound:Play()
-			game:GetService("Debris"):AddItem(sound, 3)
-		end
-
-		-- SPLIT THE TOY: Spawn a visual debris duplicate at the capture spot that tumbles/breaks apart!
-		local visuals = targetToy:FindFirstChild("Visuals")
-		if visuals then
-			local clone = visuals:Clone()
-			clone.Parent = workspace
-			clone:PivotTo(targetToy:GetPivot())
-
-			-- Strip joints/welds inside the clone
-			for _, desc in clone:GetDescendants() do
-				if desc:IsA("JointInstance") or desc:IsA("WeldConstraint") then
-					desc:Destroy()
-				end
-			end
-
-			-- Enable collisions and unanchor clone parts
-			local rng = Random.new()
-			for _, desc in clone:GetDescendants() do
-				if desc:IsA("BasePart") then
-					desc.CanCollide = true
-					desc.Anchored = false
-					desc.AssemblyLinearVelocity = Vector3.new(
-						rng:NextNumber(-20, 20),
-						rng:NextNumber(15, 30),
-						rng:NextNumber(-20, 20)
-					)
-				end
-			end
-			game:GetService("Debris"):AddItem(clone, 8)
-		end
-
-		-- Teleport target player to Cage, set Captured attribute, and freeze movement
-		targetToy:SetAttribute("Captured", true)
-		targetToy:PivotTo(CFrame.new(0, 5, 40)) -- Teleport inside dynamic cage
-		
-		local targetHum = targetToy:FindFirstChildOfClass("Humanoid")
-		if targetHum then
-			targetHum.WalkSpeed = 0
-			targetHum.JumpPower = 0
-		end
-	else
-		-- MISTAKE: Attacked a toy that was playing dead!
+	if isNPCToy then
+		-- MISTAKE: Attacked an NPC toy!
 		local mistakes = player:GetAttribute("SidMistakes") or 0
 		mistakes = mistakes + 1
 		player:SetAttribute("SidMistakes", mistakes)
-		print("[ToyStory Server] Sid made a mistake! Total mistakes:", mistakes)
+		print("[ToyStory Server] Sid made a mistake (hit NPC)! Total mistakes:", mistakes)
 
-		-- Play buzz/error sound
+		-- Play buzzer sound
 		local head = char:FindFirstChild("Head")
 		if head then
 			local sound = Instance.new("Sound")
@@ -1027,33 +981,136 @@ captureToyEvent.OnServerEvent:Connect(function(player, targetToy)
 			game:GetService("Debris"):AddItem(sound, 3)
 		end
 
-		-- Apply penalties based on mistake count
-		if mistakes == 1 then
-			-- 1st Mistake: 4 seconds stun
-			if sidHum then
-				local config = CharacterConfig["Sid"]
-				sidHum.WalkSpeed = 0
-				sidHum.JumpPower = 0
-				stunHunterEvent:FireClient(player, 4) -- Stun visual effect for 4s
-				
-				task.delay(4, function()
-					if char and char.Parent then
-						sidHum.WalkSpeed = config and config.WalkSpeed or 16
-						sidHum.JumpPower = 50
-					end
-				end)
+		-- Blow up/shatter the NPC toy satisfyingly!
+		for _, desc in targetToy:GetDescendants() do
+			if desc:IsA("JointInstance") or desc:IsA("WeldConstraint") then
+				desc:Destroy()
 			end
-		elseif mistakes == 2 then
-			-- 2nd Mistake: Vision Distortion
+		end
+
+		local rng = Random.new()
+		for _, desc in targetToy:GetDescendants() do
+			if desc:IsA("BasePart") then
+				desc.CanCollide = true
+				desc.Anchored = false
+				local impulse = Vector3.new(rng:NextNumber(-10, 10), rng:NextNumber(10, 20), rng:NextNumber(-10, 10))
+				desc.AssemblyLinearVelocity = impulse
+			end
+		end
+
+		-- Clean up the shattered NPC toy in a few seconds
+		game:GetService("Debris"):AddItem(targetToy, 5)
+
+		-- Stun Sid for 3 seconds as a mistake penalty (blurred vision handled client-side)
+		local stunHunterEvent = eventsFolder:FindFirstChild("StunHunter")
+		if not stunHunterEvent then
+			stunHunterEvent = Instance.new("RemoteEvent")
+			stunHunterEvent.Name = "StunHunter"
+			stunHunterEvent.Parent = eventsFolder
+		end
+		stunHunterEvent:FireClient(player, 3)
+
+		local root = char:FindFirstChild("HumanoidRootPart")
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		if root and hum then
+			root.Anchored = true
+			task.delay(3, function()
+				if char and char.Parent then
+					root.Anchored = false
+				end
+			end)
+		end
+
+		if mistakes >= 3 then
+			-- Game over for Sid
+			GameLoopManager.EndGame("Toys")
+		end
+
+	elseif isLayingDown then
+		-- MISTAKE: Attacked a real player that was playing dead!
+		local mistakes = player:GetAttribute("SidMistakes") or 0
+		mistakes = mistakes + 1
+		player:SetAttribute("SidMistakes", mistakes)
+		print("[ToyStory Server] Sid made a mistake (hit frozen player)! Total mistakes:", mistakes)
+
+		-- Play buzzer sound
+		local head = char:FindFirstChild("Head")
+		if head then
+			local sound = Instance.new("Sound")
+			sound.SoundId = "rbxassetid://4798150495" -- buzzer sound
+			sound.Volume = 0.8
+			sound.Parent = head
+			sound:Play()
+			game:GetService("Debris"):AddItem(sound, 3)
+		end
+
+		-- Stun Sid for 3 seconds
+		local stunHunterEvent = eventsFolder:FindFirstChild("StunHunter")
+		if not stunHunterEvent then
+			stunHunterEvent = Instance.new("RemoteEvent")
+			stunHunterEvent.Name = "StunHunter"
+			stunHunterEvent.Parent = eventsFolder
+		end
+		stunHunterEvent:FireClient(player, 3)
+
+		local root = char:FindFirstChild("HumanoidRootPart")
+		if root then
+			root.Anchored = true
+			task.delay(3, function()
+				if char and char.Parent then
+					root.Anchored = false
+				end
+			end)
+		end
+
+		-- Trigger 2nd mistake penalty client-side (distorted/blur vision)
+		if mistakes == 2 then
 			player:SetAttribute("SidDistorted", true)
-		elseif mistakes >= 3 then
-			-- 3rd Mistake: Immediate defeat! Fires round end to game manager
-			local endRoundEvent = eventsFolder:FindFirstChild("EndRoundBindable")
-			if endRoundEvent then
-				endRoundEvent:Fire("ToysWin", "Sid made 3 mistakes! Toys Victory!")
+		end
+
+		if mistakes >= 3 then
+			GameLoopManager.EndGame("Toys")
+		end
+
+	else
+		-- SUCCESS: Sid caught a toy player moving!
+		print("[ToyStory Server] Sid captured moving toy:", targetName)
+
+		-- Play crunch capture sound
+		local head = char:FindFirstChild("Head")
+		if head then
+			local sound = Instance.new("Sound")
+			sound.SoundId = "rbxassetid://2801263" -- classic crunch
+			sound.Volume = 1.0
+			sound.Parent = head
+			sound:Play()
+			game:GetService("Debris"):AddItem(sound, 3)
+		end
+
+		-- Send to cage / Capture
+		RescueManager.Capture(targetToy)
+	end
+end)
+
+-- Create the SetFreezeState RemoteEvent to handle freeze replication and name tags
+local setFreezeStateEvent = eventsFolder:FindFirstChild("SetFreezeState")
+if not setFreezeStateEvent then
+	setFreezeStateEvent = Instance.new("RemoteEvent")
+	setFreezeStateEvent.Name = "SetFreezeState"
+	setFreezeStateEvent.Parent = eventsFolder
+end
+
+setFreezeStateEvent.OnServerEvent:Connect(function(player, isFrozen)
+	local char = player.Character
+	if char and char:GetAttribute("IsCustomCharacter") then
+		char:SetAttribute("IsLayingDown", isFrozen)
+		local humanoid = char:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			if isFrozen then
+				humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+			else
+				humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
 			end
-			player:SetAttribute("SidMistakes", 0)
-			player:SetAttribute("SidDistorted", false)
 		end
 	end
 end)
@@ -1080,8 +1137,7 @@ local function swapCharacter(player: Player, currentCharacter: Model, characterN
 	end
 	-- Fallback: check workspace (for models placed directly in the game world)
 	if not template then
-		template = workspace:FindFirstChild(characterName)
-			or workspace:FindFirstChild(characterName:lower())
+		template = workspace:FindFirstChild(characterName) or workspace:FindFirstChild(characterName:lower())
 	end
 
 	if not template then
@@ -1179,4 +1235,11 @@ for _, player in Players:GetPlayers() do
 end
 Players.PlayerAdded:Connect(onPlayerAdded)
 
-print("[ToyStory Server] Selection and rigging systems initialized!")
+-- Expose build callback for spawner
+NpcSpawner.BuildCallback = buildCustomCharacter
+
+-- Initialize modular systems
+GameLoopManager.Init(NpcSpawner, ObjectiveManager, RescueManager)
+
+print("[ToyStory Server] Selection, rigging, and GameLoop systems initialized!")
+

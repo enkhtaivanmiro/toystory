@@ -141,12 +141,14 @@ local barFill = nil
 local barLabel = nil
 
 local function createFlightUI()
-	if flightGui then flightGui:Destroy() end
-	
+	if flightGui then
+		flightGui:Destroy()
+	end
+
 	flightGui = Instance.new("ScreenGui")
 	flightGui.Name = "FlightUI"
 	flightGui.ResetOnSpawn = true
-	
+
 	-- Container frame at center-bottom
 	barFrame = Instance.new("Frame")
 	barFrame.Name = "BarFrame"
@@ -156,18 +158,18 @@ local function createFlightUI()
 	barFrame.BorderSizePixel = 0
 	barFrame.Visible = false
 	barFrame.Parent = flightGui
-	
+
 	-- UICorner for rounded borders
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = UDim.new(0, 10)
 	corner.Parent = barFrame
-	
+
 	-- UIStroke for a sleek outline border
 	local stroke = Instance.new("UIStroke")
 	stroke.Color = Color3.fromRGB(60, 60, 60)
 	stroke.Thickness = 1.5
 	stroke.Parent = barFrame
-	
+
 	-- Bar Fill
 	barFill = Instance.new("Frame")
 	barFill.Name = "BarFill"
@@ -175,11 +177,11 @@ local function createFlightUI()
 	barFill.BackgroundColor3 = Color3.fromRGB(46, 204, 113) -- Emerald Green
 	barFill.BorderSizePixel = 0
 	barFill.Parent = barFrame
-	
+
 	local fillCorner = Instance.new("UICorner")
 	fillCorner.CornerRadius = UDim.new(0, 10)
 	fillCorner.Parent = barFill
-	
+
 	-- Text Label
 	barLabel = Instance.new("TextLabel")
 	barLabel.Name = "BarLabel"
@@ -190,7 +192,7 @@ local function createFlightUI()
 	barLabel.TextSize = 11
 	barLabel.Text = "FLYING: 3.0s"
 	barLabel.Parent = barFrame
-	
+
 	flightGui.Parent = playerGui
 end
 
@@ -240,12 +242,12 @@ local function updateFlightState(wingsOut: boolean)
 		humanoid.PlatformStand = false
 		targetLean = 0
 		isGliding = false
-		
+
 		-- Trigger 5-second cooldown if we were actually flying/gliding before
 		if wasFlying then
 			cooldownEndTime = os.clock() + 5
 		end
-		
+
 		updateSpeed()
 	end
 end
@@ -332,8 +334,8 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		isSprinting = true
 		updateSpeed()
 
-	-- Mouse 1 or Keypress E to Freeze / Play Dead (Toys only)
-	elseif input.UserInputType == Enum.UserInputType.MouseButton1 or input.KeyCode == Enum.KeyCode.E then
+	-- Mouse 1 or F Key to Lay Down / Play Dead / Freeze (Toys only)
+	elseif input.UserInputType == Enum.UserInputType.MouseButton1 or input.KeyCode == Enum.KeyCode.F then
 		if characterName == "Sid" then
 			return
 		end
@@ -344,37 +346,33 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		updateSpeed()
 		character:SetAttribute("IsLayingDown", isLayingDown)
 
+		-- Fire to server for name hiding replication
+		local setFreezeStateEvent = eventsFolder:FindFirstChild("SetFreezeState")
+		if setFreezeStateEvent then
+			setFreezeStateEvent:FireServer(isLayingDown)
+		end
+
 		if isLayingDown then
-			-- Character-specific lifeless freeze poses
-			if characterName == "PotatoHead" then
-				selectedPose = math.random(3, 4) -- Flops on left/right side
-			elseif characterName == "Woody" or characterName == "Buzz" then
-				selectedPose = math.random(1, 2) -- Falls flat on face/back
-			else
-				selectedPose = 0 -- Stand rigid upright (Rex, Slinky)
-			end
+			-- Randomly select a pose: 1 = Face Down, 2 = Back Down, 3 = Left Side, 4 = Right Side
+			selectedPose = math.random(1, 4)
 
 			-- Stop any active animation track when laying down
 			if currentTrack then
 				currentTrack:Stop(0.2)
 			end
-			
-			-- Hide username name tag
-			humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-		else
-			-- Restore username name tag
-			humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
 		end
 
 	-- Keypress "1" to Toggle Wings (Buzz only)
 	elseif input.KeyCode == Enum.KeyCode.One or input.KeyCode == Enum.KeyCode.KeypadOne then
-		if isLayingDown then return end -- can't fly while laying down
+		if isLayingDown then
+			return
+		end -- can't fly while laying down
 		if characterName == "Buzz" then
 			-- Enforce flight cooldown on client
 			if os.clock() < cooldownEndTime then
 				return
 			end
-			
+
 			local toggleWingsEvent = eventsFolder:FindFirstChild("ToggleWings")
 			if toggleWingsEvent then
 				toggleWingsEvent:FireServer()
@@ -451,14 +449,14 @@ if rootJoint and originalRootC0 then
 		-- Update Flight/Cooldown Progression UI dynamically
 		if characterName == "Buzz" and barFrame and barFill and barLabel then
 			local now = os.clock()
-			
+
 			if isFlying then
 				barFrame.Visible = true
 				if not isGliding then
 					local elapsed = now - flightStartTime
 					local remaining = math.max(0, 3 - elapsed)
 					local pct = remaining / 3
-					
+
 					barFill.Size = UDim2.new(pct, 0, 1, 0)
 					barFill.BackgroundColor3 = Color3.fromRGB(46, 204, 113) -- Emerald Green
 					barLabel.Text = string.format("FLYING: %.1fs", remaining)
@@ -471,7 +469,7 @@ if rootJoint and originalRootC0 then
 				barFrame.Visible = true
 				local remaining = cooldownEndTime - now
 				local pct = 1 - (remaining / 5)
-				
+
 				barFill.Size = UDim2.new(pct, 0, 1, 0)
 				barFill.BackgroundColor3 = Color3.fromRGB(230, 126, 34) -- Carrot Orange (Recharging)
 				barLabel.Text = string.format("RECHARGING: %.1fs", remaining)
@@ -481,7 +479,7 @@ if rootJoint and originalRootC0 then
 					barFill.Size = UDim2.new(1, 0, 1, 0)
 					barFill.BackgroundColor3 = Color3.fromRGB(46, 204, 113) -- Emerald Green
 					barLabel.Text = "WINGS READY!"
-					
+
 					task.delay(1, function()
 						if not isFlying and os.clock() >= cooldownEndTime then
 							barFrame.Visible = false
@@ -621,10 +619,6 @@ if rootJoint and originalRootC0 then
 			-- Right Side Down (Z rotation -90): width (X) becomes the resting dimension
 			layDownRotation = CFrame.Angles(0, 0, math.rad(-90) * currentLayTransition)
 			layDownOffsetHeight = -(pivotToGround - (modelExtents.X / 2)) * currentLayTransition
-		else
-			-- selectedPose == 0: Stand rigid upright (no tilt/offset)
-			layDownRotation = CFrame.new()
-			layDownOffsetHeight = 0
 		end
 
 		local layDownTranslation = CFrame.new(0, layDownOffsetHeight, 0)
@@ -709,7 +703,8 @@ playAnimation("idle")
 -- ========================================
 -- Sid walking sound is much louder and heavier; toys are quiet
 task.spawn(function()
-	local runningSound = torsoPart:WaitForChild("Running", 8) or character:WaitForChild("Head", 8):WaitForChild("Running", 8)
+	local runningSound = torsoPart:WaitForChild("Running", 8)
+		or character:WaitForChild("Head", 8):WaitForChild("Running", 8)
 	if runningSound and runningSound:IsA("Sound") then
 		if characterName == "Sid" then
 			runningSound.Volume = 3.0
@@ -774,12 +769,12 @@ if characterName == "Sid" then
 			if currentTrack then
 				currentTrack:Stop(0.1)
 			end
-			
+
 			local prevName = currentName
 			currentTrack = track
 			currentName = "attack"
 			track:Play(0.1, ANIM_WEIGHT)
-			
+
 			-- Once attack finishes, resume idle/walk animation state
 			task.delay(track.Length > 0 and track.Length or 0.6, function()
 				if currentName == "attack" then
@@ -794,11 +789,15 @@ if characterName == "Sid" then
 
 	-- Sid Attack/Capture Click Input
 	UserInputService.InputBegan:Connect(function(input, processed)
-		if processed then return end
+		if processed then
+			return
+		end
 
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then
 			local now = os.clock()
-			if now - lastAttackTime < 0.8 then return end -- Attack cooldown
+			if now - lastAttackTime < 0.8 then
+				return
+			end -- Attack cooldown
 			lastAttackTime = now
 
 			-- Play attack animation locally
@@ -845,19 +844,24 @@ if characterName == "Sid" then
 			stunGui.Name = "StunGui"
 			
 			local text = Instance.new("TextLabel")
-			text.Size = UDim2.new(0, 400, 0, 80)
-			text.Position = UDim2.new(0.5, -200, 0.4, -40)
-			text.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-			text.BackgroundTransparency = 0.5
-			text.TextColor3 = Color3.fromRGB(255, 50, 50)
+			text.Size = UDim2.new(0, 450, 0, 80)
+			text.Position = UDim2.new(0.5, -225, 0.4, -40)
+			text.BackgroundColor3 = Color3.fromRGB(10, 10, 15)
+			text.BackgroundTransparency = 0.2
+			text.TextColor3 = Color3.fromRGB(231, 76, 60)
 			text.Font = Enum.Font.FredokaOne
-			text.TextSize = 36
-			text.Text = "STUNNED & EMBARRASSED!"
+			text.TextSize = 32
+			text.Text = "STUNNED (MISTAKE PENALTY)!"
 			text.Parent = stunGui
 
 			local corner = Instance.new("UICorner")
 			corner.CornerRadius = UDim.new(0, 12)
 			corner.Parent = text
+
+			local stroke = Instance.new("UIStroke")
+			stroke.Color = Color3.fromRGB(231, 76, 60)
+			stroke.Thickness = 2
+			stroke.Parent = text
 			
 			stunGui.Parent = playerGui
 
@@ -873,8 +877,8 @@ if characterName == "Sid" then
 				else
 					-- Random shake
 					local shake = Vector3.new(
-						math.random(-10, 10) * 0.05,
-						math.random(-10, 10) * 0.05,
+						math.random(-10, 10) * 0.06,
+						math.random(-10, 10) * 0.06,
 						0
 					)
 					camera.CFrame = camera.CFrame * CFrame.new(shake)
@@ -893,7 +897,7 @@ if characterName ~= "Sid" then
 	-- Heartbeat sound loop
 	local heartbeatSound = Instance.new("Sound")
 	heartbeatSound.Name = "HeartbeatLoop"
-	heartbeatSound.SoundId = "rbxassetid://9114227181"
+	heartbeatSound.SoundId = "rbxassetid://9114227181" -- magical suspense/heartbeat vibe
 	heartbeatSound.Volume = 0
 	heartbeatSound.Looped = true
 	heartbeatSound.Parent = rootPart
@@ -941,8 +945,8 @@ if characterName ~= "Sid" then
 
 				-- 1. Heartbeat VFX/SFX volume scaling
 				if dist < 80 then
-					heartbeatSound.Volume = math.clamp((80 - dist) / 60 * 0.8, 0.1, 0.8)
-					heartbeatSound.PlaybackSpeed = math.clamp(1.0 + (80 - dist) / 80 * 0.7, 1.0, 1.7)
+					heartbeatSound.Volume = math.clamp((80 - dist) / 60 * 0.85, 0.1, 0.85)
+					heartbeatSound.PlaybackSpeed = math.clamp(1.0 + (80 - dist) / 80 * 0.8, 1.0, 1.8)
 				else
 					heartbeatSound.Volume = 0
 				end
@@ -951,7 +955,7 @@ if characterName ~= "Sid" then
 				-- Only shakes screen if Sid is active/moving
 				if dist < 60 and hunterHum and hunterHum.MoveDirection.Magnitude > 0 then
 					local shakeFactor = math.clamp((60 - dist) / 60, 0, 1)
-					local intensity = shakeFactor * 0.25
+					local intensity = shakeFactor * 0.3
 					
 					-- Apply quick random shake
 					local shake = Vector3.new(
@@ -1025,8 +1029,8 @@ if characterName == "Sid" then
 			end
 			if not ccEffect then
 				ccEffect = Instance.new("ColorCorrectionEffect")
-				ccEffect.Saturation = -0.6
-				ccEffect.Contrast = 0.4
+				ccEffect.Saturation = -0.7
+				ccEffect.Contrast = 0.5
 				ccEffect.Parent = lighting
 			end
 		else
@@ -1044,3 +1048,4 @@ if characterName == "Sid" then
 end
 
 print("[ToyStory Animate] Character animation controller loaded for " .. characterName)
+

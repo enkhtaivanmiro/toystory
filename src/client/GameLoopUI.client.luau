@@ -1,0 +1,312 @@
+--[[
+	ToyStory - GameLoopUI (LocalScript)
+	Generates a premium glassmorphic UI HUD displaying game state, phase timers,
+	battery count, captured overlays, and victory/defeat screens.
+]]
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+
+local localPlayer = Players.LocalPlayer
+local playerGui = localPlayer:WaitForChild("PlayerGui")
+
+local gameStateFolder = ReplicatedStorage:WaitForChild("GameState")
+local phaseVal = gameStateFolder:WaitForChild("MatchPhase")
+local timerVal = gameStateFolder:WaitForChild("TimeRemaining")
+local batteriesVal = gameStateFolder:FindFirstChild("BatteriesCollected")
+
+local eventsFolder = ReplicatedStorage:WaitForChild("Events")
+local gameEndedEvent = eventsFolder:WaitForChild("GameEnded", 10)
+
+-- ========================================
+-- UI HUD Elements Creation (Programmatic)
+-- ========================================
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "GameLoopGui"
+screenGui.ResetOnSpawn = false
+screenGui.IgnoreGuiInset = true
+
+-- Top Status Card
+local hudCard = Instance.new("Frame")
+hudCard.Name = "HudCard"
+hudCard.Size = UDim2.fromOffset(360, 65)
+hudCard.Position = UDim2.new(0.5, -180, 0.02, 0)
+hudCard.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+hudCard.BackgroundTransparency = 0.25
+hudCard.BorderSizePixel = 0
+hudCard.Parent = screenGui
+
+local cardCorner = Instance.new("UICorner")
+cardCorner.CornerRadius = UDim.new(0, 10)
+cardCorner.Parent = hudCard
+
+local cardStroke = Instance.new("UIStroke")
+cardStroke.Color = Color3.fromRGB(80, 80, 95)
+cardStroke.Thickness = 1.5
+cardStroke.Parent = hudCard
+
+-- Phase Label
+local phaseLabel = Instance.new("TextLabel")
+phaseLabel.Name = "PhaseLabel"
+phaseLabel.Size = UDim2.new(1, 0, 0, 30)
+phaseLabel.Position = UDim2.fromScale(0, 0)
+phaseLabel.BackgroundTransparency = 1
+-- Setup initial value
+phaseLabel.Text = "WAITING FOR PLAYERS"
+phaseLabel.TextColor3 = Color3.fromRGB(160, 160, 180)
+phaseLabel.Font = Enum.Font.FredokaOne
+phaseLabel.TextSize = 18
+phaseLabel.Parent = hudCard
+
+-- Timer Label
+local timerLabel = Instance.new("TextLabel")
+timerLabel.Name = "TimerLabel"
+timerLabel.Size = UDim2.new(1, 0, 0, 25)
+timerLabel.Position = UDim2.fromOffset(0, 32)
+timerLabel.BackgroundTransparency = 1
+timerLabel.Text = "Time: 0:00"
+timerLabel.TextColor3 = Color3.fromRGB(240, 240, 245)
+timerLabel.Font = Enum.Font.GothamBold
+timerLabel.TextSize = 15
+timerLabel.Parent = hudCard
+
+-- Battery HUD Panel (Toys only)
+local batteryCard = Instance.new("Frame")
+batteryCard.Name = "BatteryCard"
+batteryCard.Size = UDim2.fromOffset(160, 45)
+batteryCard.Position = UDim2.new(0.02, 0, 0.02, 0)
+batteryCard.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+batteryCard.BackgroundTransparency = 0.25
+batteryCard.BorderSizePixel = 0
+batteryCard.Visible = false
+batteryCard.Parent = screenGui
+
+local batCorner = Instance.new("UICorner")
+batCorner.CornerRadius = UDim.new(0, 8)
+batCorner.Parent = batteryCard
+
+local batStroke = Instance.new("UIStroke")
+batStroke.Color = Color3.fromRGB(80, 80, 95)
+batStroke.Thickness = 1.5
+batStroke.Parent = batteryCard
+
+local batteryLabel = Instance.new("TextLabel")
+batteryLabel.Name = "BatteryLabel"
+batteryLabel.Size = UDim2.fromScale(1, 1)
+batteryLabel.BackgroundTransparency = 1
+batteryLabel.Text = "Batteries: 0 / 3"
+batteryLabel.TextColor3 = Color3.fromRGB(241, 196, 15) -- Yellow Gold
+batteryLabel.Font = Enum.Font.FredokaOne
+batteryLabel.TextSize = 16
+batteryLabel.Parent = batteryCard
+
+-- Captured Overlay (Toys only)
+local capturedFrame = Instance.new("Frame")
+capturedFrame.Name = "CapturedOverlay"
+capturedFrame.Size = UDim2.fromScale(1, 1)
+capturedFrame.BackgroundColor3 = Color3.fromRGB(150, 20, 20)
+capturedFrame.BackgroundTransparency = 0.9 -- subtle red tint
+capturedFrame.Visible = false
+capturedFrame.BorderSizePixel = 0
+capturedFrame.Parent = screenGui
+
+local capturedLabel = Instance.new("TextLabel")
+capturedLabel.Size = UDim2.new(1, 0, 0, 120)
+capturedLabel.Position = UDim2.new(0, 0, 0.4, -60)
+capturedLabel.BackgroundTransparency = 1
+capturedLabel.TextColor3 = Color3.fromRGB(255, 75, 75)
+capturedLabel.Font = Enum.Font.FredokaOne
+capturedLabel.TextSize = 36
+capturedLabel.Text = "CAPTURED!"
+capturedLabel.Parent = capturedFrame
+
+local rescueLabel = Instance.new("TextLabel")
+rescueLabel.Size = UDim2.new(1, 0, 0, 40)
+rescueLabel.Position = UDim2.new(0, 0, 0.45, 20)
+rescueLabel.BackgroundTransparency = 1
+rescueLabel.TextColor3 = Color3.fromRGB(240, 240, 240)
+rescueLabel.Font = Enum.Font.GothamBold
+rescueLabel.TextSize = 18
+rescueLabel.Text = "Wait for a teammate to rescue you"
+rescueLabel.Parent = capturedFrame
+
+-- Victory/Defeat Overlay
+local matchEndedFrame = Instance.new("Frame")
+matchEndedFrame.Name = "MatchEndedOverlay"
+matchEndedFrame.Size = UDim2.fromScale(1, 1)
+matchEndedFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 15)
+matchEndedFrame.BackgroundTransparency = 1
+matchEndedFrame.Visible = false
+matchEndedFrame.BorderSizePixel = 0
+matchEndedFrame.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+matchEndedFrame.Parent = screenGui
+
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Size = UDim2.new(1, 0, 0, 100)
+statusLabel.Position = UDim2.new(0, 0, 0.35, -50)
+statusLabel.BackgroundTransparency = 1
+statusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+statusLabel.Font = Enum.Font.FredokaOne
+statusLabel.TextSize = 48
+statusLabel.ZIndex = 2
+statusLabel.Parent = matchEndedFrame
+
+local subStatusLabel = Instance.new("TextLabel")
+subStatusLabel.Size = UDim2.new(1, 0, 0, 40)
+subStatusLabel.Position = UDim2.new(0, 0, 0.35, 60)
+subStatusLabel.BackgroundTransparency = 1
+subStatusLabel.TextColor3 = Color3.fromRGB(180, 180, 200)
+subStatusLabel.Font = Enum.Font.GothamBold
+subStatusLabel.TextSize = 20
+subStatusLabel.ZIndex = 2
+subStatusLabel.Parent = matchEndedFrame
+
+screenGui.Parent = playerGui
+
+-- ========================================
+-- Dynamic Updates / Value Changed Listeners
+-- ========================================
+
+-- Format Timer (Seconds -> MM:SS)
+local function formatTime(seconds: number): string
+	local mins = math.floor(seconds / 60)
+	local secs = seconds % 60
+	return string.format("%d:%02d", mins, secs)
+end
+
+-- Update Timer Label
+timerVal.Changed:Connect(function(newVal)
+	timerLabel.Text = "Time: " .. formatTime(newVal)
+end)
+
+-- Update Phase Label
+phaseVal.Changed:Connect(function(newVal)
+	local char = localPlayer.Character
+	local charName = char and char:GetAttribute("CharacterName")
+
+	if newVal == "Prep" then
+		phaseLabel.Text = "PREPARATION PHASE"
+		phaseLabel.TextColor3 = Color3.fromRGB(52, 152, 219) -- Sky Blue
+		if charName and charName ~= "Sid" then
+			batteryCard.Visible = true
+		else
+			batteryCard.Visible = false
+		end
+	elseif newVal == "Search" then
+		phaseLabel.Text = "SEARCH PHASE - AVOID SID!"
+		phaseLabel.TextColor3 = Color3.fromRGB(230, 126, 34) -- Orange
+		if charName and charName ~= "Sid" then
+			batteryCard.Visible = true
+		else
+			batteryCard.Visible = false
+		end
+	elseif newVal == "Escape" then
+		phaseLabel.Text = "ESCAPE ROUTE OPEN!"
+		phaseLabel.TextColor3 = Color3.fromRGB(46, 204, 113) -- Emerald Green
+		if charName and charName ~= "Sid" then
+			batteryCard.Visible = true
+		else
+			batteryCard.Visible = false
+		end
+	elseif newVal == "Ended" then
+		phaseLabel.Text = "MATCH OVER"
+		phaseLabel.TextColor3 = Color3.fromRGB(231, 76, 60) -- Alizarin Red
+		batteryCard.Visible = false
+	end
+end)
+
+-- Update Battery Count
+if batteriesVal then
+	batteriesVal.Changed:Connect(function(newVal)
+		batteryLabel.Text = "Batteries: " .. tostring(newVal) .. " / 3"
+		
+		-- Flash green effect on battery deposit
+		TweenService:Create(batteryLabel, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, 1, true), { TextColor3 = Color3.fromRGB(46, 204, 113) }):Play()
+	end)
+end
+
+-- Local Character Connection (handles Captured overlay & Carrier notifications)
+local function onCharacterAdded(char)
+	task.wait(1)
+	local charName = char:GetAttribute("CharacterName")
+
+	if charName and charName ~= "Sid" then
+		-- Listen to Captured Attribute change
+		char:GetAttributeChangedSignal("IsCaptured"):Connect(function()
+			local isCaptured = char:GetAttribute("IsCaptured") or false
+			capturedFrame.Visible = isCaptured
+			if isCaptured then
+				capturedFrame.BackgroundTransparency = 0.95
+				TweenService:Create(capturedFrame, TweenInfo.new(0.5), { BackgroundTransparency = 0.85 }):Play()
+			end
+		end)
+
+		-- Show battery UI for toys
+		local phase = phaseVal.Value
+		if phase == "Prep" or phase == "Search" or phase == "Escape" then
+			batteryCard.Visible = true
+		end
+	else
+		-- Sid never gets captured, doesn't need battery HUD
+		capturedFrame.Visible = false
+		batteryCard.Visible = false
+	end
+end
+
+localPlayer.CharacterAdded:Connect(onCharacterAdded)
+if localPlayer.Character then
+	onCharacterAdded(localPlayer.Character)
+end
+
+-- GameEnded UI trigger
+if gameEndedEvent then
+	gameEndedEvent.OnClientEvent:Connect(function(winnerTeam)
+		local char = localPlayer.Character
+		local charName = char and char:GetAttribute("CharacterName")
+		local isToy = charName and charName ~= "Sid"
+
+		matchEndedFrame.Visible = true
+		matchEndedFrame.BackgroundTransparency = 1
+		TweenService:Create(matchEndedFrame, TweenInfo.new(0.6), { BackgroundTransparency = 0.05 }):Play()
+
+		if winnerTeam == "Toys" then
+			statusLabel.TextColor3 = Color3.fromRGB(46, 204, 113) -- Green
+			if isToy then
+				statusLabel.Text = "VICTORY!"
+				subStatusLabel.Text = "You successfully repaired the vehicle and escaped!"
+			else
+				statusLabel.Text = "DEFEAT!"
+				subStatusLabel.Text = "The toys outsmarted you and escaped!"
+			end
+		else
+			-- Hunter (Sid) wins
+			statusLabel.TextColor3 = Color3.fromRGB(231, 76, 60) -- Red
+			if isToy then
+				statusLabel.Text = "DEFEAT!"
+				subStatusLabel.Text = "Sid captured all the toys!"
+			else
+				statusLabel.Text = "VICTORY!"
+				subStatusLabel.Text = "All toys have been captured and eliminated!"
+			end
+		end
+
+		-- Pulse UI text
+		statusLabel.TextTransparency = 1
+		subStatusLabel.TextTransparency = 1
+		TweenService:Create(statusLabel, TweenInfo.new(0.5), { TextTransparency = 0 }):Play()
+		TweenService:Create(subStatusLabel, TweenInfo.new(0.5), { TextTransparency = 0 }):Play()
+
+		-- Fade out after 8 seconds
+		task.delay(8, function()
+			TweenService:Create(matchEndedFrame, TweenInfo.new(0.5), { BackgroundTransparency = 1 }):Play()
+			TweenService:Create(statusLabel, TweenInfo.new(0.5), { TextTransparency = 1 }):Play()
+			TweenService:Create(subStatusLabel, TweenInfo.new(0.5), { TextTransparency = 1 }):Play()
+			task.wait(0.5)
+			matchEndedFrame.Visible = false
+		end)
+	end)
+end
+
+print("[ToyStory GameLoopUI] Client HUD loaded!")
