@@ -251,28 +251,10 @@ function RescueManager.Capture(toyCharacter: Model, hunterCharacter: Model?)
 		captureConnections[player] = conn
 	end
 
-	-- Slowly decay health while captured (5 health per second)
+	-- Ensure health is full while captured (no damage decay)
 	local humanoid = toyCharacter:FindFirstChildOfClass("Humanoid")
 	if humanoid then
 		humanoid.Health = 100
-
-		local taskRef
-		taskRef = task.spawn(function()
-			while toyCharacter:GetAttribute("IsCaptured") == true and humanoid.Health > 0 do
-				task.wait(1.0)
-				pcall(function()
-					humanoid.Health = humanoid.Health - 5
-				end)
-			end
-
-			if humanoid.Health <= 0 then
-				-- Eliminate player
-				print("[ToyStory RescueManager] Captured toy died:", player.Name)
-				humanoid:BreakJoints()
-				RescueManager.CleanUpPlayer(player)
-			end
-		end)
-		damageTasks[player] = taskRef
 	end
 end
 
