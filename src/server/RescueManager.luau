@@ -75,6 +75,15 @@ local function createVisualCage()
 end
 
 --- Deposits a carried toy into the cage.
+local function resetSidCarrying()
+	for _, p in ipairs(Players:GetPlayers()) do
+		local c = p.Character
+		if c and c:GetAttribute("CharacterName") == "Sid" then
+			c:SetAttribute("IsCarryingToy", false)
+		end
+	end
+end
+
 function RescueManager.DepositInCage(player: Player)
 	local char = player.Character
 	if not char then
@@ -121,6 +130,9 @@ function RescueManager.DepositInCage(player: Player)
 			end
 		end
 	end
+
+	-- Reset Sid carrying attribute since toy was deposited
+	resetSidCarrying()
 end
 
 --- Starts the background loop that checks distance of carried toys to the cage.
@@ -167,10 +179,17 @@ function RescueManager.Capture(toyCharacter: Model, hunterCharacter: Model?)
 	if hunterCharacter then
 		local rightArm = hunterCharacter:FindFirstChild("Right Arm")
 		if rightArm and rightArm:IsA("BasePart") then
-			-- Unanchor root so the toy can be carried
+			-- Flag Sid as carrying a toy
+			hunterCharacter:SetAttribute("IsCarryingToy", true)
+
+			-- Unanchor root and hand over network ownership to the server (nil)
+			-- This stops the toy player's client from simulating physics and fighting the weld
 			local root = toyCharacter.PrimaryPart
 			if root then
 				root.Anchored = false
+				pcall(function()
+					root:SetNetworkOwner(nil)
+				end)
 			end
 
 			-- Weld toy's primary part to Sid's Right Arm
@@ -283,13 +302,19 @@ function RescueManager.Release(player: Player)
 	-- Teleport outside cage
 	char:PivotTo(CFrame.new(CAGE_POSITION + Vector3.new(0, 1, -12)))
 
-	-- Unanchor
+	-- Unanchor and restore network ownership to the client player
 	local root = char.PrimaryPart
 	if root then
 		root.Anchored = false
+		pcall(function()
+			root:SetNetworkOwner(player)
+		end)
 	end
 
 	char:SetAttribute("IsCaptured", false)
+
+	-- Reset Sid carrying attribute in case they were rescued from hand
+	resetSidCarrying()
 
 	-- Restore standard captured collision rules
 	for _, part in char:GetDescendants() do

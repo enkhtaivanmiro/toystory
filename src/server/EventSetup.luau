@@ -80,6 +80,11 @@ function EventSetup.Init(eventsFolder: Folder, gameLoopManager: any, rescueManag
 			return
 		end
 
+		-- If Sid is already carrying a toy in his hand, reject the capture request
+		if char:GetAttribute("IsCarryingToy") == true then
+			return
+		end
+
 		-- Validate target
 		if not targetToy or not targetToy:IsA("Model") or not targetToy:GetAttribute("IsCustomCharacter") then
 			return
