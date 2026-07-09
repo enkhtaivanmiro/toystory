@@ -215,11 +215,13 @@ function RescueManager.Capture(toyCharacter: Model, hunterCharacter: Model?)
 			end
 
 			-- Make parts temporarily non-collidable and assign to CapturedToys collision group
-			-- to prevent physical collisions with Sid or other Toys from flinging characters
+			-- to prevent physical collisions with Sid or other Toys from flinging characters.
+			-- Set Massless to true so their weight doesn't pull Sid down or glitch his movement.
 			for _, part in toyCharacter:GetDescendants() do
 				if part:IsA("BasePart") then
 					part.CanCollide = false
 					part.CollisionGroup = "CapturedToys"
+					part.Massless = true
 				end
 			end
 
@@ -323,6 +325,7 @@ function RescueManager.Release(player: Player)
 	for _, part in char:GetDescendants() do
 		if part:IsA("BasePart") then
 			part.CollisionGroup = "Toys"
+			part.Massless = false
 			local name = part.Name
 			if name == "Torso" or name == "Left Leg" or name == "Right Leg" or name == "HumanoidRootPart" then
 				part.CanCollide = true
@@ -395,6 +398,7 @@ function RescueManager.DropCarriedToy(hunterPlayer: Player)
 			for _, part in char:GetDescendants() do
 				if part:IsA("BasePart") then
 					part.CollisionGroup = "Toys"
+					part.Massless = false
 					local name = part.Name
 					if name == "Torso" or name == "Left Leg" or name == "Right Leg" or name == "HumanoidRootPart" then
 						part.CanCollide = true

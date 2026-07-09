@@ -159,6 +159,7 @@ local function updateSpeed()
 	if isCaptured then
 		humanoid.WalkSpeed = 0
 		humanoid.JumpPower = 0
+		humanoid.PlatformStand = true
 		
 		-- Disable all collisions while captured/carried to prevent weld glitches
 		for _, desc in character:GetDescendants() do
@@ -172,6 +173,7 @@ local function updateSpeed()
 	if LayDownController.IsLayingDown then
 		humanoid.WalkSpeed = 0
 		humanoid.JumpPower = 0
+		humanoid.PlatformStand = true
 
 		-- Disable collisions on ALL parts while laying down to prevent physics
 		-- launching the character (especially important for large MeshParts like Rex)
@@ -190,6 +192,7 @@ local function updateSpeed()
 			humanoid.WalkSpeed = WALK_SPEED
 		end
 		humanoid.JumpPower = defaultJumpPower
+		humanoid.PlatformStand = false
 
 		-- Restore standard R6 collision state when standing up
 		for _, desc in character:GetDescendants() do
@@ -407,8 +410,10 @@ character:GetAttributeChangedSignal("IsCaptured"):Connect(function()
 		if LayDownController.IsLayingDown then
 			LayDownController.Toggle(character, nil)
 		end
-		updateSpeed()
+	else
+		humanoid.PlatformStand = false
 	end
+	updateSpeed()
 end)
 
 -- Start with idle
