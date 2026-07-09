@@ -82,7 +82,12 @@ objectiveLabel.TextColor3 = Color3.fromRGB(241, 196, 15) -- Yellow Gold
 objectiveLabel.Font = Enum.Font.FredokaOne
 objectiveLabel.TextSize = 14
 objectiveLabel.Text = "Objective: Wait for game to start..."
+objectiveLabel.TextXAlignment = Enum.TextXAlignment.Center
+objectiveLabel.TextYAlignment = Enum.TextYAlignment.Center
+objectiveLabel.TextWrapped = true
 objectiveLabel.Parent = hudCard
+
+print("[ToyStory GameLoopUI] Objective Label created programmatically:", objectiveLabel:GetFullName())
 
 -- Captured Overlay (Toys only)
 local capturedFrame = Instance.new("Frame")
@@ -203,6 +208,9 @@ local function updateObjectiveText()
 		objectiveLabel.Text = "Objective: Wait for match to begin..."
 		objectiveLabel.TextColor3 = Color3.fromRGB(160, 160, 180)
 	end
+
+	print(string.format("[ToyStory GameLoopUI] updateObjectiveText: char=%s, charName=%s, isSid=%s, phase=%s, count=%d, text=%q",
+		tostring(char), tostring(charName), tostring(isSid), tostring(phase), count, objectiveLabel.Text))
 end
 
 -- Update Phase Label
