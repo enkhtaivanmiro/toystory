@@ -123,16 +123,28 @@ function SidCombatController.Init(
 			raycastParams.FilterDescendantsInstances = { character }
 			raycastParams.FilterType = Enum.RaycastFilterType.Exclude
 
+			-- Helper to find the top-level character model
+			local function getCharacterModel(instance: Instance): Model?
+				local current = instance
+				while current and current ~= workspace do
+					if current:IsA("Model") and current:GetAttribute("IsCustomCharacter") == true then
+						return current
+					end
+					current = current.Parent
+				end
+				return nil
+			end
+
 			local result = workspace:Raycast(ray.Origin, ray.Direction * 150, raycastParams)
 			if result and result.Instance then
-				-- Find character model
-				local targetModel = result.Instance:FindFirstAncestorOfClass("Model")
-				if targetModel and targetModel:GetAttribute("IsCustomCharacter") then
+				-- Find top-level character model
+				local targetModel = getCharacterModel(result.Instance)
+				if targetModel then
 					local targetName = targetModel:GetAttribute("CharacterName")
 					if targetName and targetName ~= "Sid" then
-						-- Range check: Sid must be close enough (50 studs)
+						-- Range check: Sid must be close enough (75 studs to account for height)
 						local dist = (rootPart.Position - result.Position).Magnitude
-						if dist <= 50 then
+						if dist <= 75 then
 							-- Request capture
 							local captureToyEvent = eventsFolder:FindFirstChild("CaptureToy")
 							if captureToyEvent then
