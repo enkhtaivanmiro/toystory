@@ -39,6 +39,13 @@ if not config then
 	return
 end
 
+-- Force Camera Mode based on character type
+if characterName == "Sid" then
+	localPlayer.CameraMode = Enum.CameraMode.LockFirstPerson
+else
+	localPlayer.CameraMode = Enum.CameraMode.Classic
+end
+
 -- Load sub-modules
 local FlightController = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("FlightController"))
 local ProximityEffects = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ProximityEffects"))

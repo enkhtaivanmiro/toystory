@@ -135,16 +135,46 @@ function SidCombatController.Init(
 				return nil
 			end
 
+			-- Helper to find a nearby toy character within a click tolerance radius (for easy capturing)
+			local function findNearbyToy(hitPosition: Vector3): Model?
+				local closestToy = nil
+				local closestDist = 12 -- 12 studs horizontal tolerance radius
+
+				for _, otherPlayer in Players:GetPlayers() do
+					if otherPlayer ~= localPlayer then
+						local otherChar = otherPlayer.Character
+						if otherChar and otherChar:GetAttribute("IsCustomCharacter") == true then
+							local name = otherChar:GetAttribute("CharacterName")
+							local isCaptured = otherChar:GetAttribute("IsCaptured") or false
+							if name ~= "Sid" and not isCaptured then
+								local root = otherChar.PrimaryPart
+								if root then
+									local rootPos = root.Position
+									local horizontalDist = (Vector3.new(rootPos.X, 0, rootPos.Z) - Vector3.new(hitPosition.X, 0, hitPosition.Z)).Magnitude
+									local verticalDist = math.abs(rootPos.Y - hitPosition.Y)
+
+									if horizontalDist <= closestDist and verticalDist <= 10 then
+										closestDist = horizontalDist
+										closestToy = otherChar
+									end
+								end
+							end
+						end
+					end
+				end
+				return closestToy
+			end
+
 			local result = workspace:Raycast(ray.Origin, ray.Direction * 1000, raycastParams)
 			if result and result.Instance then
-				-- Find top-level character model
-				local targetModel = getCharacterModel(result.Instance)
+				-- Find top-level character model (direct hit) or fall back to nearby toy (hitbox assist)
+				local targetModel = getCharacterModel(result.Instance) or findNearbyToy(result.Position)
 				if targetModel then
 					local targetName = targetModel:GetAttribute("CharacterName")
 					if targetName and targetName ~= "Sid" then
-						-- Range check: Sid must be close enough (75 studs to account for height)
+						-- Range check: Sid must be close enough (90 studs to account for height and fast toys)
 						local dist = (rootPart.Position - result.Position).Magnitude
-						if dist <= 75 then
+						if dist <= 90 then
 							-- Request capture
 							local captureToyEvent = eventsFolder:FindFirstChild("CaptureToy")
 							if captureToyEvent then
