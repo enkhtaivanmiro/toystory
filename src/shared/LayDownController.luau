@@ -56,12 +56,6 @@ function LayDownController.Toggle(character: Model, currentTrack: AnimationTrack
 
 	character:SetAttribute("IsLayingDown", LayDownController.IsLayingDown)
 
-	-- Fire to server for name hiding replication
-	local setFreezeStateEvent = eventsFolder:FindFirstChild("SetFreezeState")
-	if setFreezeStateEvent then
-		setFreezeStateEvent:FireServer(LayDownController.IsLayingDown)
-	end
-
 	if LayDownController.IsLayingDown then
 		-- Randomly select a pose
 		selectedPose = math.random(1, 4)
@@ -70,6 +64,12 @@ function LayDownController.Toggle(character: Model, currentTrack: AnimationTrack
 		if currentTrack then
 			currentTrack:Stop(0.2)
 		end
+	end
+
+	-- Fire to server for name hiding replication
+	local setFreezeStateEvent = eventsFolder:FindFirstChild("SetFreezeState")
+	if setFreezeStateEvent then
+		setFreezeStateEvent:FireServer(LayDownController.IsLayingDown, selectedPose)
 	end
 
 	return LayDownController.IsLayingDown
