@@ -8,6 +8,8 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Debris = game:GetService("Debris")
 
+local Utils = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Utils"))
+
 local ObjectiveManager = {}
 
 local batteriesVal = ReplicatedStorage:WaitForChild("GameState"):WaitForChild("BatteriesCollected")
@@ -141,12 +143,7 @@ function ObjectiveManager.InitializeObjectives()
 				print("[ToyStory Objectives] Battery inserted by", player.Name, "- Total:", batteriesVal.Value)
 
 				-- Play mechanical insertion sound
-				local sound = Instance.new("Sound")
-				sound.SoundId = "rbxassetid://9114226176" -- success chime
-				sound.Volume = 0.8
-				sound.Parent = body
-				sound:Play()
-				Debris:AddItem(sound, 3)
+				Utils.PlayOneShot(body, "rbxassetid://9114226176", 0.8)
 
 				-- Check if completed
 				if batteriesVal.Value >= 3 then
@@ -222,12 +219,7 @@ function ObjectiveManager.InitializeObjectives()
 						-- Play pick up sound
 						local head = char:FindFirstChild("Head")
 						if head then
-							local sound = Instance.new("Sound")
-							sound.SoundId = "rbxassetid://9114223126" -- thump pick up
-							sound.Volume = 0.6
-							sound.Parent = head
-							sound:Play()
-							Debris:AddItem(sound, 3)
+							Utils.PlayOneShot(head, "rbxassetid://9114223126", 0.6)
 						end
 					end
 				end
@@ -273,12 +265,7 @@ function ObjectiveManager.OpenEscapeZone()
 				-- Play escape chime
 				local head = char:FindFirstChild("Head")
 				if head then
-					local sound = Instance.new("Sound")
-					sound.SoundId = "rbxassetid://9114227181" -- magical chime
-					sound.Volume = 1.0
-					sound.Parent = head
-					sound:Play()
-					Debris:AddItem(sound, 3)
+					Utils.PlayOneShot(head, "rbxassetid://9114227181", 1.0)
 				end
 
 				print("[ToyStory Objectives]", player.Name, "successfully escaped!")

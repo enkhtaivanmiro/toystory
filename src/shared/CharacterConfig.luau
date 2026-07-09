@@ -1,6 +1,7 @@
 --[[
 	ToyStory - Character Configuration
 	Defines configurations, stats, lean angles, and animation IDs for all playable characters.
+	Provides type exports and helper utilities for safe access.
 ]]
 
 export type CharacterStats = {
@@ -18,10 +19,21 @@ export type CharacterStats = {
 		jump: string,
 		fall: string,
 		climb: string,
+		attack: string?,
 	},
 }
 
-local CharacterConfig: { [string]: CharacterStats } = {
+--- Union type of all valid character names.
+export type CharacterName = "Buzz" | "Woody" | "Slinky" | "PotatoHead" | "Rex" | "Sid"
+
+--- Ordered list of all character names for iteration.
+--- Use this instead of scattering magic strings throughout the codebase.
+local CHARACTER_NAMES: { CharacterName } = { "Buzz", "Woody", "Slinky", "PotatoHead", "Rex", "Sid" }
+
+--- List of toy character names (excludes Sid the hunter).
+local TOY_NAMES: { CharacterName } = { "Buzz", "Woody", "Slinky", "PotatoHead", "Rex" }
+
+local CharacterConfig: { [CharacterName]: CharacterStats } = {
 	Buzz = {
 		Height = 7,
 		WalkSpeed = 8,
@@ -121,5 +133,9 @@ local CharacterConfig: { [string]: CharacterStats } = {
 		},
 	},
 }
+
+-- Attach helper lists as fields on the config table for external access
+CharacterConfig.CHARACTER_NAMES = CHARACTER_NAMES
+CharacterConfig.TOY_NAMES = TOY_NAMES
 
 return CharacterConfig

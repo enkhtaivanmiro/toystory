@@ -164,12 +164,8 @@ function RescueManager.Release(player: Player)
 	-- Play rescue sound
 	local head = char:FindFirstChild("Head")
 	if head then
-		local sound = Instance.new("Sound")
-		sound.SoundId = "rbxassetid://9114226176" -- success chime sound
-		sound.Volume = 0.8
-		sound.Parent = head
-		sound:Play()
-		Debris:AddItem(sound, 3)
+		local Utils = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Utils"))
+		Utils.PlayOneShot(head, "rbxassetid://9114226176", 0.8)
 	end
 end
 

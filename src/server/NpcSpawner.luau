@@ -6,6 +6,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CharacterConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("CharacterConfig"))
+local Utils = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Utils"))
 
 local NpcSpawner = {}
 local spawnedNPCs = {}
@@ -15,32 +16,10 @@ local SPAWN_BOUNDS_X = {-60, 60}
 local SPAWN_BOUNDS_Z = {-60, 60}
 local SPAWN_HEIGHT_START = 40
 
--- List of toy characters to use as NPCs
-local TOY_CHARACTERS = {"Woody", "Buzz", "Slinky", "PotatoHead", "Rex"}
+-- List of toy characters to use as NPCs (from config)
+local TOY_CHARACTERS = CharacterConfig.TOY_NAMES
 
-local function getModelExtents(model: Model)
-	local minY = math.huge
-	local maxY = -math.huge
-	local minX = math.huge
-	local maxX = -math.huge
-	local minZ = math.huge
-	local maxZ = -math.huge
 
-	for _, desc in model:GetDescendants() do
-		if desc:IsA("BasePart") then
-			local pos = desc.CFrame.Position
-			local half = desc.Size / 2
-			minY = math.min(minY, pos.Y - half.Y)
-			maxY = math.max(maxY, pos.Y + half.Y)
-			minX = math.min(minX, pos.X - half.X)
-			maxX = math.max(maxX, pos.X + half.X)
-			minZ = math.min(minZ, pos.Z - half.Z)
-			maxZ = math.max(maxZ, pos.Z + half.Z)
-		end
-	end
-
-	return Vector3.new(maxX - minX, maxY - minY, maxZ - minZ)
-end
 
 function NpcSpawner.SpawnNPCs(buildCallback)
 	NpcSpawner.ClearNPCs()
@@ -127,7 +106,7 @@ function NpcSpawner.SpawnNPCs(buildCallback)
 					-- Apply lifeless pose CFrame modification on RootJoint
 					local rootJoint = root:FindFirstChild("RootJoint")
 					if rootJoint and rootJoint:IsA("Motor6D") then
-						local extents = getModelExtents(npcModel)
+						local extents = Utils.GetModelExtents(npcModel)
 						local pivotToGround = root.Position.Y - (spawnPos.Y)
 						
 						local selectedPose = rng:NextInteger(1, 4)

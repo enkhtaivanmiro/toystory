@@ -6,7 +6,8 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
+
+local Utils = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Utils"))
 
 local GameLoopManager = {}
 
@@ -40,12 +41,7 @@ batteriesVal.Parent = gameStateFolder
 
 -- RemoteEvents for UI overlay triggers
 local eventsFolder = ReplicatedStorage:WaitForChild("Events")
-local gameEndedEvent = eventsFolder:FindFirstChild("GameEnded")
-if not gameEndedEvent then
-	gameEndedEvent = Instance.new("RemoteEvent")
-	gameEndedEvent.Name = "GameEnded"
-	gameEndedEvent.Parent = eventsFolder
-end
+local gameEndedEvent = Utils.GetOrCreateRemoteEvent(eventsFolder, "GameEnded")
 
 -- Require dependencies (loaded lazily to prevent circular dependencies)
 local NpcSpawner
@@ -93,12 +89,7 @@ local function lockHunter(lock: boolean)
 	end
 
 	-- Notify the Hunter client (for black screen or lock message)
-	local lockHunterEvent = eventsFolder:FindFirstChild("LockHunter")
-	if not lockHunterEvent then
-		lockHunterEvent = Instance.new("RemoteEvent")
-		lockHunterEvent.Name = "LockHunter"
-		lockHunterEvent.Parent = eventsFolder
-	end
+	local lockHunterEvent = Utils.GetOrCreateRemoteEvent(eventsFolder, "LockHunter")
 	lockHunterEvent:FireClient(hunterPlayer, lock)
 end
 
