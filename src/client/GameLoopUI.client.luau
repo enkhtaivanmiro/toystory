@@ -31,8 +31,8 @@ screenGui.IgnoreGuiInset = true
 -- Top Status Card
 local hudCard = Instance.new("Frame")
 hudCard.Name = "HudCard"
-hudCard.Size = UDim2.fromOffset(360, 65)
-hudCard.Position = UDim2.new(0.5, -180, 0.02, 0)
+hudCard.Size = UDim2.fromOffset(450, 95)
+hudCard.Position = UDim2.new(0.5, -225, 0.02, 0)
 hudCard.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
 hudCard.BackgroundTransparency = 0.25
 hudCard.BorderSizePixel = 0
@@ -64,7 +64,7 @@ phaseLabel.Parent = hudCard
 local timerLabel = Instance.new("TextLabel")
 timerLabel.Name = "TimerLabel"
 timerLabel.Size = UDim2.new(1, 0, 0, 25)
-timerLabel.Position = UDim2.fromOffset(0, 32)
+timerLabel.Position = UDim2.fromOffset(0, 30)
 timerLabel.BackgroundTransparency = 1
 timerLabel.Text = "Time: 0:00"
 timerLabel.TextColor3 = Color3.fromRGB(240, 240, 245)
@@ -72,35 +72,17 @@ timerLabel.Font = Enum.Font.GothamBold
 timerLabel.TextSize = 15
 timerLabel.Parent = hudCard
 
--- Battery HUD Panel (Toys only)
-local batteryCard = Instance.new("Frame")
-batteryCard.Name = "BatteryCard"
-batteryCard.Size = UDim2.fromOffset(160, 45)
-batteryCard.Position = UDim2.new(0.02, 0, 0.02, 0)
-batteryCard.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
-batteryCard.BackgroundTransparency = 0.25
-batteryCard.BorderSizePixel = 0
-batteryCard.Visible = false
-batteryCard.Parent = screenGui
-
-local batCorner = Instance.new("UICorner")
-batCorner.CornerRadius = UDim.new(0, 8)
-batCorner.Parent = batteryCard
-
-local batStroke = Instance.new("UIStroke")
-batStroke.Color = Color3.fromRGB(80, 80, 95)
-batStroke.Thickness = 1.5
-batStroke.Parent = batteryCard
-
-local batteryLabel = Instance.new("TextLabel")
-batteryLabel.Name = "BatteryLabel"
-batteryLabel.Size = UDim2.fromScale(1, 1)
-batteryLabel.BackgroundTransparency = 1
-batteryLabel.Text = "Batteries: 0 / 3"
-batteryLabel.TextColor3 = Color3.fromRGB(241, 196, 15) -- Yellow Gold
-batteryLabel.Font = Enum.Font.FredokaOne
-batteryLabel.TextSize = 16
-batteryLabel.Parent = batteryCard
+-- Objective Label (Visible to all, showing team-specific goals)
+local objectiveLabel = Instance.new("TextLabel")
+objectiveLabel.Name = "ObjectiveLabel"
+objectiveLabel.Size = UDim2.new(1, -20, 0, 30)
+objectiveLabel.Position = UDim2.fromOffset(10, 58)
+objectiveLabel.BackgroundTransparency = 1
+objectiveLabel.TextColor3 = Color3.fromRGB(241, 196, 15) -- Yellow Gold
+objectiveLabel.Font = Enum.Font.FredokaOne
+objectiveLabel.TextSize = 14
+objectiveLabel.Text = "Objective: Wait for game to start..."
+objectiveLabel.Parent = hudCard
 
 -- Captured Overlay (Toys only)
 local capturedFrame = Instance.new("Frame")
@@ -181,49 +163,72 @@ timerVal.Changed:Connect(function(newVal)
 	timerLabel.Text = "Time: " .. formatTime(newVal)
 end)
 
--- Update Phase Label
-phaseVal.Changed:Connect(function(newVal)
+-- Helper function to update the objective text on the screen for both Sid and Toys
+local function updateObjectiveText()
 	local char = localPlayer.Character
 	local charName = char and char:GetAttribute("CharacterName")
+	local isSid = (charName == "Sid")
 
+	local phase = phaseVal.Value
+	local count = batteriesVal and batteriesVal.Value or 0
+
+	if phase == "Ended" then
+		objectiveLabel.Text = "Objective: Round has ended."
+		objectiveLabel.TextColor3 = Color3.fromRGB(160, 160, 180)
+	elseif phase == "Prep" then
+		if isSid then
+			objectiveLabel.Text = "Objective: Wait for toys to finish hiding..."
+			objectiveLabel.TextColor3 = Color3.fromRGB(160, 160, 180)
+		else
+			objectiveLabel.Text = "Objective: Hide and look for Potato Head parts!"
+			objectiveLabel.TextColor3 = Color3.fromRGB(52, 152, 219) -- Sky Blue
+		end
+	elseif phase == "Search" then
+		if isSid then
+			objectiveLabel.Text = string.format("Objective: Capture all toys! (Parts assembled: %d / 3)", count)
+			objectiveLabel.TextColor3 = Color3.fromRGB(231, 76, 60) -- Light Red
+		else
+			objectiveLabel.Text = string.format("Objective: Assemble Mrs. Potato Head! (Parts: %d / 3)", count)
+			objectiveLabel.TextColor3 = Color3.fromRGB(241, 196, 15) -- Yellow Gold
+		end
+	elseif phase == "Escape" then
+		if isSid then
+			objectiveLabel.Text = "Objective: Capture the toys before they escape!"
+			objectiveLabel.TextColor3 = Color3.fromRGB(231, 76, 60)
+		else
+			objectiveLabel.Text = "Objective: Head to the escape zone!"
+			objectiveLabel.TextColor3 = Color3.fromRGB(46, 204, 113)
+		end
+	else
+		objectiveLabel.Text = "Objective: Wait for match to begin..."
+		objectiveLabel.TextColor3 = Color3.fromRGB(160, 160, 180)
+	end
+end
+
+-- Update Phase Label
+phaseVal.Changed:Connect(function(newVal)
 	if newVal == "Prep" then
 		phaseLabel.Text = "PREPARATION PHASE"
 		phaseLabel.TextColor3 = Color3.fromRGB(52, 152, 219) -- Sky Blue
-		if charName and charName ~= "Sid" then
-			batteryCard.Visible = true
-		else
-			batteryCard.Visible = false
-		end
 	elseif newVal == "Search" then
 		phaseLabel.Text = "SEARCH PHASE - AVOID SID!"
 		phaseLabel.TextColor3 = Color3.fromRGB(230, 126, 34) -- Orange
-		if charName and charName ~= "Sid" then
-			batteryCard.Visible = true
-		else
-			batteryCard.Visible = false
-		end
 	elseif newVal == "Escape" then
 		phaseLabel.Text = "ESCAPE ROUTE OPEN!"
 		phaseLabel.TextColor3 = Color3.fromRGB(46, 204, 113) -- Emerald Green
-		if charName and charName ~= "Sid" then
-			batteryCard.Visible = true
-		else
-			batteryCard.Visible = false
-		end
 	elseif newVal == "Ended" then
 		phaseLabel.Text = "MATCH OVER"
 		phaseLabel.TextColor3 = Color3.fromRGB(231, 76, 60) -- Alizarin Red
-		batteryCard.Visible = false
 	end
+	updateObjectiveText()
 end)
 
 -- Update Battery Count
 if batteriesVal then
 	batteriesVal.Changed:Connect(function(newVal)
-		batteryLabel.Text = "Batteries: " .. tostring(newVal) .. " / 3"
-		
-		-- Flash green effect on battery deposit
-		TweenService:Create(batteryLabel, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, 1, true), { TextColor3 = Color3.fromRGB(46, 204, 113) }):Play()
+		updateObjectiveText()
+		-- Flash yellow-gold effect on assembly card
+		TweenService:Create(objectiveLabel, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, 1, true), { TextColor3 = Color3.fromRGB(46, 204, 113) }):Play()
 	end)
 end
 
@@ -242,17 +247,10 @@ local function onCharacterAdded(char)
 				TweenService:Create(capturedFrame, TweenInfo.new(0.5), { BackgroundTransparency = 0.85 }):Play()
 			end
 		end)
-
-		-- Show battery UI for toys
-		local phase = phaseVal.Value
-		if phase == "Prep" or phase == "Search" or phase == "Escape" then
-			batteryCard.Visible = true
-		end
 	else
-		-- Sid never gets captured, doesn't need battery HUD
 		capturedFrame.Visible = false
-		batteryCard.Visible = false
 	end
+	updateObjectiveText()
 end
 
 localPlayer.CharacterAdded:Connect(onCharacterAdded)
@@ -275,10 +273,10 @@ if gameEndedEvent then
 			statusLabel.TextColor3 = Color3.fromRGB(46, 204, 113) -- Green
 			if isToy then
 				statusLabel.Text = "VICTORY!"
-				subStatusLabel.Text = "You successfully repaired the vehicle and escaped!"
+				subStatusLabel.Text = "You successfully assembled Mrs. Potato Head!"
 			else
 				statusLabel.Text = "DEFEAT!"
-				subStatusLabel.Text = "The toys outsmarted you and escaped!"
+				subStatusLabel.Text = "The toys outsmarted you and assembled Mrs. Potato Head!"
 			end
 		else
 			-- Hunter (Sid) wins
