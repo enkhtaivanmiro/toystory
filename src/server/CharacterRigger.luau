@@ -130,13 +130,13 @@ local function getVisualForwardDirection(visualModel: Model, originalTemplate: M
 end
 
 --- Create a fresh Humanoid with standard R6 settings and an Animator.
-local function createHumanoid(character: Model): Humanoid
+local function createHumanoid(character: Model, hipHeight: number): Humanoid
 	local humanoid = Instance.new("Humanoid")
 	humanoid.RigType = Enum.HumanoidRigType.R6
 	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
 	humanoid.HealthDisplayDistance = 0
 	humanoid.NameDisplayDistance = 0
-	humanoid.HipHeight = 0
+	humanoid.HipHeight = hipHeight
 	humanoid.Parent = character
 
 	local animator = Instance.new("Animator")
@@ -207,7 +207,8 @@ function CharacterRigger.Build(template: Model, characterName: string, targetHei
 			scaleModel(character, scaleFactor)
 		end
 
-		createHumanoid(character)
+		local legHeight = targetHeight * 0.4
+		createHumanoid(character, legHeight + 0.2)
 		character.PrimaryPart = existingRoot
 		character:SetAttribute("IsCustomCharacter", true)
 		character:SetAttribute("CharacterName", characterName)
@@ -333,7 +334,8 @@ function CharacterRigger.Build(template: Model, characterName: string, targetHei
 		torso)
 
 	-- 11. Create the Humanoid
-	createHumanoid(character)
+	local legHeight = 2.0 * scale
+	createHumanoid(character, legHeight + 0.2)
 	character.PrimaryPart = rootPart
 
 	-- 12. Handle wing accessory (Buzz only)

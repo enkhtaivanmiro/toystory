@@ -1,0 +1,22 @@
+14:59:19.164 INFO  Loading c:\Users\User\Documents\RobloxProjects\ToyStory\de_sidhouse.bsp
+14:59:19.259 WARN  Lump LUMP_CUBEMAPS is empty
+14:59:19.286 WARN  Lump LUMP_CLIPPORTALVERTS is empty
+14:59:19.288 WARN  Tried reading lump 'LUMP_DISP_MULTIBLEND', but it is not supported by the bsp's version
+14:59:19.298 WARN  Lump LUMP_OVERLAY_SYSTEM_LEVELS is empty
+14:59:19.298 INFO  BSP version: 20
+14:59:19.299 INFO  Game: Counter-Strike: Source
+14:59:19.306 INFO  No areaportals to reallocate...
+14:59:19.307 INFO  No occluders to reallocate...
+14:59:19.578 INFO  9488 (37.0%) exact brushside->origface matches
+14:59:19.592 INFO  23 (0.2%) nondisp and 96 (100.0%) disp original faces left after exact brushside->origface matching
+14:59:19.630 INFO  94 (0.4%) partial brushside->origface matches
+14:59:19.632 INFO  Writing brushes and planes
+14:59:19.850 INFO  Writing displacements
+14:59:19.871 INFO  Writing entities
+14:59:19.962 INFO  Writing func_details
+14:59:19.977 INFO  Writing func_viscluster
+14:59:19.980 INFO  Writing info_overlays
+14:59:19.982 INFO  Writing prop_statics
+14:59:19.982 INFO  Writing env_cubemaps
+14:59:19.982 INFO  Writing func_ladders
+14:59:19.986 INFO  Finished decompiling c:\Users\User\Documents\RobloxProjects\ToyStory\de_sidhouse.bsp.
