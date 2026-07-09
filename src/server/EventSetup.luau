@@ -124,7 +124,7 @@ function EventSetup.Init(eventsFolder: Folder, gameLoopManager: any, rescueManag
 	-- ========================================
 	local setFreezeStateEvent = Utils.GetOrCreateRemoteEvent(eventsFolder, "SetFreezeState")
 
-	setFreezeStateEvent.OnServerEvent:Connect(function(player, isFrozen, selectedPose)
+	setFreezeStateEvent.OnServerEvent:Connect(function(player, isFrozen, targetC0)
 		local char = player.Character
 		if char and char:GetAttribute("IsCustomCharacter") then
 			char:SetAttribute("IsLayingDown", isFrozen)
@@ -141,55 +141,14 @@ function EventSetup.Init(eventsFolder: Folder, gameLoopManager: any, rescueManag
 			local root = char.PrimaryPart
 			local rootJoint = root and root:FindFirstChild("RootJoint")
 			if rootJoint and rootJoint:IsA("Motor6D") then
-				local originalRootC0 = CFrame.new(0, 0, 0) * CFrame.Angles(math.rad(-90), 0, math.rad(180))
-
-				if isFrozen and selectedPose then
-					-- Calculate dimensions on the server
-					local boundsMin = Vector3.new(math.huge, math.huge, math.huge)
-					local boundsMax = Vector3.new(-math.huge, -math.huge, -math.huge)
-
-					for _, desc in char:GetDescendants() do
-						if desc:IsA("BasePart") then
-							local pos = desc.CFrame.Position
-							local half = desc.Size / 2
-							boundsMin = Vector3.new(
-								math.min(boundsMin.X, pos.X - half.X),
-								math.min(boundsMin.Y, pos.Y - half.Y),
-								math.min(boundsMin.Z, pos.Z - half.Z)
-							)
-							boundsMax = Vector3.new(
-								math.max(boundsMax.X, pos.X + half.X),
-								math.max(boundsMax.Y, pos.Y + half.Y),
-								math.max(boundsMax.Z, pos.Z + half.Z)
-							)
-						end
-					end
-
-					local modelExtents = boundsMax - boundsMin
-					local pivotToGround = root.Position.Y - boundsMin.Y
-
-					local layDownRotation = CFrame.new()
-					local layDownOffsetHeight = 0
-
-					if selectedPose == 1 then
-						layDownRotation = CFrame.Angles(math.rad(90), 0, 0)
-						layDownOffsetHeight = -(pivotToGround - (modelExtents.Z / 2))
-					elseif selectedPose == 2 then
-						layDownRotation = CFrame.Angles(math.rad(-90), 0, 0)
-						layDownOffsetHeight = -(pivotToGround - (modelExtents.Z / 2))
-					elseif selectedPose == 3 then
-						layDownRotation = CFrame.Angles(0, 0, math.rad(90))
-						layDownOffsetHeight = -(pivotToGround - (modelExtents.X / 2))
-					elseif selectedPose == 4 then
-						layDownRotation = CFrame.Angles(0, 0, math.rad(-90))
-						layDownOffsetHeight = -(pivotToGround - (modelExtents.X / 2))
-					end
-
-					rootJoint.C0 = CFrame.new(0, layDownOffsetHeight, 0) * layDownRotation * originalRootC0
+				if targetC0 then
+					rootJoint.C0 = targetC0
+					print("[ToyStory EventSetup] Replicated lay-down C0 for", player.Name)
 				else
-					-- Reset to original upright C0
-					rootJoint.C0 = originalRootC0
+					warn("[ToyStory EventSetup] No targetC0 received for", player.Name)
 				end
+			else
+				warn("[ToyStory EventSetup] RootJoint NOT found on server for", player.Name)
 			end
 		end
 	end)

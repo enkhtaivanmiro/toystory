@@ -12,10 +12,11 @@ local LayDownController = {}
 
 -- State
 LayDownController.IsLayingDown = false
+LayDownController.selectedPose = 1 -- 1 = Face Down, 2 = Back Down, 3 = Left Side, 4 = Right Side
 
 -- Internal state
-local selectedPose = 1 -- 1 = Face Down, 2 = Back Down, 3 = Left Side, 4 = Right Side
 local currentLayTransition = 0 -- 0 = standing, 1 = laying down
+local originalRootC0 = nil
 
 -- Model geometry cached during Init
 local pivotToGround = 0
@@ -23,9 +24,12 @@ local modelExtents = Vector3.new(1, 1, 1)
 
 --- Initialize the lay-down controller with character geometry.
 function LayDownController.Init(character: Model, rootPart: BasePart)
+	local rootJoint = rootPart:WaitForChild("RootJoint", 10)
+	if rootJoint then
+		originalRootC0 = rootJoint.C0
+	end
+
 	-- Calculate actual model bounds for proper lay-down positioning
-	-- This accounts for models like Rex where a large MeshPart extends far
-	-- beyond the tiny R6 skeleton parts
 	local boundsMin = Vector3.new(math.huge, math.huge, math.huge)
 	local boundsMax = Vector3.new(-math.huge, -math.huge, -math.huge)
 
@@ -56,20 +60,45 @@ function LayDownController.Toggle(character: Model, currentTrack: AnimationTrack
 
 	character:SetAttribute("IsLayingDown", LayDownController.IsLayingDown)
 
+	local targetC0 = originalRootC0
+
 	if LayDownController.IsLayingDown then
 		-- Randomly select a pose
-		selectedPose = math.random(1, 4)
+		LayDownController.selectedPose = math.random(1, 4)
 
 		-- Stop any active animation track when laying down
 		if currentTrack then
 			currentTrack:Stop(0.2)
 		end
+
+		-- Calculate the final target CFrame directly on the client to send to the server
+		local layDownRotation = CFrame.new()
+		local layDownOffsetHeight = 0
+
+		if LayDownController.selectedPose == 1 then
+			layDownRotation = CFrame.Angles(math.rad(90), 0, 0)
+			layDownOffsetHeight = -(pivotToGround - (modelExtents.Z / 2))
+		elseif LayDownController.selectedPose == 2 then
+			layDownRotation = CFrame.Angles(math.rad(-90), 0, 0)
+			layDownOffsetHeight = -(pivotToGround - (modelExtents.Z / 2))
+		elseif LayDownController.selectedPose == 3 then
+			layDownRotation = CFrame.Angles(0, 0, math.rad(90))
+			layDownOffsetHeight = -(pivotToGround - (modelExtents.X / 2))
+		elseif LayDownController.selectedPose == 4 then
+			layDownRotation = CFrame.Angles(0, 0, math.rad(-90))
+			layDownOffsetHeight = -(pivotToGround - (modelExtents.X / 2))
+		end
+
+		local layDownTranslation = CFrame.new(0, layDownOffsetHeight, 0)
+		if originalRootC0 then
+			targetC0 = layDownTranslation * layDownRotation * originalRootC0
+		end
 	end
 
-	-- Fire to server for name hiding replication
+	-- Fire to server for replication (replicates exact joint CFrame directly)
 	local setFreezeStateEvent = eventsFolder:FindFirstChild("SetFreezeState")
 	if setFreezeStateEvent then
-		setFreezeStateEvent:FireServer(LayDownController.IsLayingDown, selectedPose)
+		setFreezeStateEvent:FireServer(LayDownController.IsLayingDown, targetC0)
 	end
 
 	return LayDownController.IsLayingDown
@@ -85,22 +114,16 @@ function LayDownController.UpdateFrame(): (CFrame, CFrame, number)
 	local layDownRotation = CFrame.new()
 	local layDownOffsetHeight = 0
 
-	-- Use actual model bounds for lay-down offset so large-mesh characters
-	-- like Rex rest on the ground properly instead of clipping through
-	if selectedPose == 1 then
-		-- Face Down (X rotation 90): depth (Z) becomes the resting dimension
+	if LayDownController.selectedPose == 1 then
 		layDownRotation = CFrame.Angles(math.rad(90) * currentLayTransition, 0, 0)
 		layDownOffsetHeight = -(pivotToGround - (modelExtents.Z / 2)) * currentLayTransition
-	elseif selectedPose == 2 then
-		-- Back Down (X rotation -90): depth (Z) becomes the resting dimension
+	elseif LayDownController.selectedPose == 2 then
 		layDownRotation = CFrame.Angles(math.rad(-90) * currentLayTransition, 0, 0)
 		layDownOffsetHeight = -(pivotToGround - (modelExtents.Z / 2)) * currentLayTransition
-	elseif selectedPose == 3 then
-		-- Left Side Down (Z rotation 90): width (X) becomes the resting dimension
+	elseif LayDownController.selectedPose == 3 then
 		layDownRotation = CFrame.Angles(0, 0, math.rad(90) * currentLayTransition)
 		layDownOffsetHeight = -(pivotToGround - (modelExtents.X / 2)) * currentLayTransition
-	elseif selectedPose == 4 then
-		-- Right Side Down (Z rotation -90): width (X) becomes the resting dimension
+	elseif LayDownController.selectedPose == 4 then
 		layDownRotation = CFrame.Angles(0, 0, math.rad(-90) * currentLayTransition)
 		layDownOffsetHeight = -(pivotToGround - (modelExtents.X / 2)) * currentLayTransition
 	end
