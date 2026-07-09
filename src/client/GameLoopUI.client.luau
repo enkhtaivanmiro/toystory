@@ -14,7 +14,7 @@ local playerGui = localPlayer:WaitForChild("PlayerGui")
 local gameStateFolder = ReplicatedStorage:WaitForChild("GameState")
 local phaseVal = gameStateFolder:WaitForChild("MatchPhase")
 local timerVal = gameStateFolder:WaitForChild("TimeRemaining")
-local batteriesVal = gameStateFolder:FindFirstChild("BatteriesCollected")
+local batteriesVal = gameStateFolder:WaitForChild("BatteriesCollected")
 
 local eventsFolder = ReplicatedStorage:WaitForChild("Events")
 local gameEndedEvent = eventsFolder:WaitForChild("GameEnded", 10)
@@ -234,23 +234,34 @@ end
 
 -- Local Character Connection (handles Captured overlay & Carrier notifications)
 local function onCharacterAdded(char)
-	task.wait(1)
-	local charName = char:GetAttribute("CharacterName")
+	-- Update objective immediately when CharacterName replicates
+	char:GetAttributeChangedSignal("CharacterName"):Connect(function()
+		updateObjectiveText()
+	end)
 
-	if charName and charName ~= "Sid" then
-		-- Listen to Captured Attribute change
-		char:GetAttributeChangedSignal("IsCaptured"):Connect(function()
+	-- Handle captured overlay visibility dynamically
+	char:GetAttributeChangedSignal("IsCaptured"):Connect(function()
+		local charName = char:GetAttribute("CharacterName")
+		if charName and charName ~= "Sid" then
 			local isCaptured = char:GetAttribute("IsCaptured") or false
 			capturedFrame.Visible = isCaptured
 			if isCaptured then
 				capturedFrame.BackgroundTransparency = 0.95
 				TweenService:Create(capturedFrame, TweenInfo.new(0.5), { BackgroundTransparency = 0.85 }):Play()
 			end
-		end)
+		else
+			capturedFrame.Visible = false
+		end
+	end)
+
+	-- Run initially (if character attributes are already replicated)
+	updateObjectiveText()
+	local charName = char:GetAttribute("CharacterName")
+	if charName and charName ~= "Sid" then
+		capturedFrame.Visible = char:GetAttribute("IsCaptured") or false
 	else
 		capturedFrame.Visible = false
 	end
-	updateObjectiveText()
 end
 
 localPlayer.CharacterAdded:Connect(onCharacterAdded)
