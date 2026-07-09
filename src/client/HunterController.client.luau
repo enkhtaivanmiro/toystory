@@ -10,6 +10,7 @@ local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
+local Debris = game:GetService("Debris")
 
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
@@ -222,7 +223,7 @@ local function initializeHunterController(char)
 			searchConnection:Disconnect()
 
 			-- Clear indicators
-			for _, indicator in activeIndicators do
+			for _, indicator in pairs(activeIndicators) do
 				indicator:Destroy()
 			end
 			activeIndicators = {}
