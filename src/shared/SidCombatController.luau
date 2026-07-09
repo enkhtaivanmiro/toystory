@@ -135,7 +135,7 @@ function SidCombatController.Init(
 				return nil
 			end
 
-			local result = workspace:Raycast(ray.Origin, ray.Direction * 150, raycastParams)
+			local result = workspace:Raycast(ray.Origin, ray.Direction * 1000, raycastParams)
 			if result and result.Instance then
 				-- Find top-level character model
 				local targetModel = getCharacterModel(result.Instance)
