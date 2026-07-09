@@ -176,7 +176,17 @@ local function updateObjectiveText()
 	local phase = phaseVal.Value
 	local count = batteriesVal and batteriesVal.Value or 0
 
-	if phase == "Ended" then
+	if phase == "Lobby" then
+		local toys = gameStateFolder:GetAttribute("LobbyToysCount") or 0
+		local sids = gameStateFolder:GetAttribute("LobbySidsCount") or 0
+		if toys >= 4 and sids >= 1 then
+			objectiveLabel.Text = string.format("Objective: Starting soon! (Toys: %d/4, Sid: %d/1)", toys, sids)
+			objectiveLabel.TextColor3 = Color3.fromRGB(46, 204, 113) -- Green
+		else
+			objectiveLabel.Text = string.format("Objective: Need players (Toys: %d/4, Sid: %d/1)", toys, sids)
+			objectiveLabel.TextColor3 = Color3.fromRGB(230, 126, 34) -- Orange
+		end
+	elseif phase == "Ended" then
 		objectiveLabel.Text = "Objective: Round has ended."
 		objectiveLabel.TextColor3 = Color3.fromRGB(160, 160, 180)
 	elseif phase == "Prep" then
@@ -214,7 +224,10 @@ end
 
 -- Update Phase Label
 phaseVal.Changed:Connect(function(newVal)
-	if newVal == "Prep" then
+	if newVal == "Lobby" then
+		phaseLabel.Text = "LOBBY - WAITING FOR PLAYERS"
+		phaseLabel.TextColor3 = Color3.fromRGB(160, 160, 180) -- Muted Gray
+	elseif newVal == "Prep" then
 		phaseLabel.Text = "PREPARATION PHASE"
 		phaseLabel.TextColor3 = Color3.fromRGB(52, 152, 219) -- Sky Blue
 	elseif newVal == "Search" then
@@ -228,6 +241,13 @@ phaseVal.Changed:Connect(function(newVal)
 		phaseLabel.TextColor3 = Color3.fromRGB(231, 76, 60) -- Alizarin Red
 	end
 	updateObjectiveText()
+end)
+
+-- Hook up lobby attribute changes to update objective card in real-time
+gameStateFolder.AttributeChanged:Connect(function(attr)
+	if attr == "LobbyToysCount" or attr == "LobbySidsCount" then
+		updateObjectiveText()
+	end
 end)
 
 -- Update Battery Count

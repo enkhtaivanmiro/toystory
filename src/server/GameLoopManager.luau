@@ -66,6 +66,23 @@ local function getAliveToyCount(): number
 	return count
 end
 
+local function getPlayerCounts(): (number, number)
+	local toyCount = 0
+	local sidCount = 0
+	for _, player in Players:GetPlayers() do
+		local char = player.Character
+		if char and char:GetAttribute("IsCustomCharacter") then
+			local charName = char:GetAttribute("CharacterName")
+			if charName == "Sid" then
+				sidCount = sidCount + 1
+			elseif charName and charName ~= "" then
+				toyCount = toyCount + 1
+			end
+		end
+	end
+	return toyCount, sidCount
+end
+
 local function getHunterPlayer(): Player?
 	for _, player in Players:GetPlayers() do
 		local char = player.Character
@@ -159,13 +176,38 @@ end
 
 function GameLoopManager.Update()
 	if GameLoopManager.Phase == "Ended" then
-		if GameLoopManager.TimeRemaining <= 0 then
-			-- Start a new game if players are present
-			if #Players:GetPlayers() >= 1 then
-				GameLoopManager.SetPhase("Prep")
+		if GameLoopManager.TimeRemaining > 0 then
+			GameLoopManager.TimeRemaining = GameLoopManager.TimeRemaining - 1
+			timerVal.Value = GameLoopManager.TimeRemaining
+		else
+			-- Transition to Lobby
+			GameLoopManager.SetPhase("Lobby")
+			GameLoopManager.TimeRemaining = 60
+			timerVal.Value = 60
+		end
+		return
+	end
+
+	if GameLoopManager.Phase == "Lobby" then
+		local toyCount, sidCount = getPlayerCounts()
+		
+		-- Replicate lobby counts to the client
+		gameStateFolder:SetAttribute("LobbyToysCount", toyCount)
+		gameStateFolder:SetAttribute("LobbySidsCount", sidCount)
+
+		-- Match start condition: At least 4 Toys and 1 Sid
+		if toyCount >= 4 and sidCount >= 1 then
+			if GameLoopManager.TimeRemaining > 0 then
+				GameLoopManager.TimeRemaining = GameLoopManager.TimeRemaining - 1
+				timerVal.Value = GameLoopManager.TimeRemaining
 			else
-				GameLoopManager.TimeRemaining = 10 -- keep waiting
+				-- Start the round!
+				GameLoopManager.SetPhase("Prep")
 			end
+		else
+			-- Reset/Keep countdown at 60 seconds if players are missing
+			GameLoopManager.TimeRemaining = 60
+			timerVal.Value = 60
 		end
 		return
 	end
@@ -226,11 +268,11 @@ function GameLoopManager.Init(spawnerModule, objModule, rescueModule)
 		end
 	end)
 
-	-- Start initial wait timer
-	GameLoopManager.TimeRemaining = 15
-	GameLoopManager.SetPhase("Ended")
+	-- Start initial lobby wait state
+	GameLoopManager.TimeRemaining = 60
+	GameLoopManager.SetPhase("Lobby")
 	
-	print("[ToyStory GameLoop] GameLoopManager Initialized!")
+	print("[ToyStory GameLoop] GameLoopManager Initialized in LOBBY phase!")
 end
 
 return GameLoopManager
