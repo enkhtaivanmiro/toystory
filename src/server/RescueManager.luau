@@ -6,6 +6,7 @@
 
 local Players = game:GetService("Players")
 local Debris = game:GetService("Debris")
+local PhysicsService = game:GetService("PhysicsService")
 
 local RescueManager = {}
 local activeCage = nil
@@ -213,10 +214,12 @@ function RescueManager.Capture(toyCharacter: Model, hunterCharacter: Model?)
 				humanoid.PlatformStand = true
 			end
 
-			-- Make parts temporarily non-collidable so they don't glitch Sid's movement
+			-- Make parts temporarily non-collidable and assign to CapturedToys collision group
+			-- to prevent physical collisions with Sid or other Toys from flinging characters
 			for _, part in toyCharacter:GetDescendants() do
 				if part:IsA("BasePart") then
 					part.CanCollide = false
+					part.CollisionGroup = "CapturedToys"
 				end
 			end
 
@@ -316,9 +319,10 @@ function RescueManager.Release(player: Player)
 	-- Reset Sid carrying attribute in case they were rescued from hand
 	resetSidCarrying()
 
-	-- Restore standard captured collision rules
+	-- Restore standard captured collision rules and collision group
 	for _, part in char:GetDescendants() do
 		if part:IsA("BasePart") then
+			part.CollisionGroup = "Toys"
 			local name = part.Name
 			if name == "Torso" or name == "Left Leg" or name == "Right Leg" or name == "HumanoidRootPart" then
 				part.CanCollide = true
@@ -387,9 +391,10 @@ function RescueManager.DropCarriedToy(hunterPlayer: Player)
 
 			char:SetAttribute("IsCaptured", false)
 
-			-- Restore standard captured collision rules
+			-- Restore standard captured collision rules and collision group
 			for _, part in char:GetDescendants() do
 				if part:IsA("BasePart") then
+					part.CollisionGroup = "Toys"
 					local name = part.Name
 					if name == "Torso" or name == "Left Leg" or name == "Right Leg" or name == "HumanoidRootPart" then
 						part.CanCollide = true

@@ -6,6 +6,16 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local PhysicsService = game:GetService("PhysicsService")
+
+-- Setup Collision Groups safely
+pcall(function() PhysicsService:RegisterCollisionGroup("Hunters") end)
+pcall(function() PhysicsService:RegisterCollisionGroup("Toys") end)
+pcall(function() PhysicsService:RegisterCollisionGroup("CapturedToys") end)
+
+pcall(function() PhysicsService:CollisionGroupSetCollidable("Hunters", "CapturedToys", false) end)
+pcall(function() PhysicsService:CollisionGroupSetCollidable("Toys", "CapturedToys", false) end)
+pcall(function() PhysicsService:CollisionGroupSetCollidable("CapturedToys", "CapturedToys", false) end)
 
 -- Shared modules
 local Utils = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Utils"))
@@ -114,6 +124,14 @@ local function swapCharacter(player: Player, currentCharacter: Model, characterN
 	-- Parent and set character
 	customCharacter.Parent = workspace
 	player.Character = customCharacter
+
+	-- Assign spawned parts to their respective collision groups
+	local collisionGroupName = (characterName == "Sid") and "Hunters" or "Toys"
+	for _, part in customCharacter:GetDescendants() do
+		if part:IsA("BasePart") then
+			part.CollisionGroup = collisionGroupName
+		end
+	end
 
 	-- Enable Animate script
 	task.defer(function()

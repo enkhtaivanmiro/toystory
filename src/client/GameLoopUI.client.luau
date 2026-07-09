@@ -7,6 +7,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
+local ProximityPromptService = game:GetService("ProximityPromptService")
 
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
@@ -344,5 +345,21 @@ if gameEndedEvent then
 		end)
 	end)
 end
+
+-- Hide Rescue teammates prompt if the local player is Sid or currently captured themselves
+ProximityPromptService.PromptShown:Connect(function(prompt)
+	if prompt.Name == "RescuePrompt" then
+		local char = localPlayer.Character
+		if char then
+			local charName = char:GetAttribute("CharacterName")
+			local isCaptured = char:GetAttribute("IsCaptured") or false
+			if charName == "Sid" or isCaptured then
+				prompt.Enabled = false
+			end
+		else
+			prompt.Enabled = false
+		end
+	end
+end)
 
 print("[ToyStory GameLoopUI] Client HUD loaded!")
