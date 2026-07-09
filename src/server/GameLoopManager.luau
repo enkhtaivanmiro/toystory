@@ -161,7 +161,7 @@ function GameLoopManager.Update()
 	if GameLoopManager.Phase == "Ended" then
 		if GameLoopManager.TimeRemaining <= 0 then
 			-- Start a new game if players are present
-			if #Players:GetPlayers() >= 2 then
+			if #Players:GetPlayers() >= 1 then
 				GameLoopManager.SetPhase("Prep")
 			else
 				GameLoopManager.TimeRemaining = 10 -- keep waiting
