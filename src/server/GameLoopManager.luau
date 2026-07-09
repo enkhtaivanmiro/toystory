@@ -124,8 +124,8 @@ function GameLoopManager.SetPhase(newPhase: string)
 	elseif newPhase == "Search" then
 		-- Release Hunter
 		lockHunter(false)
-		-- Set timer to 180 seconds (3 mins)
-		GameLoopManager.TimeRemaining = 180
+		-- Set timer to 300 seconds (5 mins)
+		GameLoopManager.TimeRemaining = 300
 	elseif newPhase == "Escape" then
 		-- Trigger Escape zone opening
 		if ObjectiveManager then

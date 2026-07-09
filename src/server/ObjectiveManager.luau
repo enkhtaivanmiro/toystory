@@ -147,9 +147,8 @@ function ObjectiveManager.InitializeObjectives()
 
 				-- Check if completed
 				if batteriesVal.Value >= 3 then
-					-- Start escape phase via loop manager
 					local GameLoopManager = require(script.Parent.GameLoopManager)
-					GameLoopManager.SetPhase("Escape")
+					GameLoopManager.EndGame("Toys")
 				end
 			end
 		end)
