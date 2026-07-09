@@ -18,7 +18,8 @@ local rescuePrompts = {}
 
 -- Tracking carried toys & welds
 local carriedToys = {} -- Player -> Model
-local carryingWelds = {} -- Player -> WeldConstraint
+local carryingWelds = {} -- Player -> WeldConstraint (placeholder)
+local carryingConnections = {} -- Player -> RBXScriptConnection (for manual CFrame carrying)
 local checkLoopActive = false
 
 -- Create a visual cage programmatically if it doesn't exist
@@ -94,12 +95,13 @@ function RescueManager.DepositInCage(player: Player)
 
 	print("[ToyStory RescueManager] Toy deposited in cage:", player.Name)
 
-	-- Remove carrying weld
-	local weld = carryingWelds[player]
-	if weld then
-		weld:Destroy()
-		carryingWelds[player] = nil
+	-- Disconnect manual carrying Heartbeat loop
+	local conn = carryingConnections[player]
+	if conn then
+		conn:Disconnect()
+		carryingConnections[player] = nil
 	end
+	carryingWelds[player] = nil
 
 	carriedToys[player] = nil
 	char:SetAttribute("IsCarried", false)
@@ -183,24 +185,30 @@ function RescueManager.Capture(toyCharacter: Model, hunterCharacter: Model?)
 			-- Flag Sid as carrying a toy
 			hunterCharacter:SetAttribute("IsCarryingToy", true)
 
-			-- Unanchor root and hand over network ownership to the server (nil)
-			-- This stops the toy player's client from simulating physics and fighting the weld
+			-- Anchor root part so it doesn't simulate physics or exert any force on Sid
 			local root = toyCharacter.PrimaryPart
 			if root then
-				root.Anchored = false
-				pcall(function()
-					root:SetNetworkOwner(nil)
-				end)
+				root.Anchored = true
 			end
 
-			-- Weld toy's primary part to Sid's Right Arm
-			local weld = Instance.new("WeldConstraint")
-			weld.Part0 = rightArm
-			weld.Part1 = root or toyCharacter:FindFirstChild("Torso")
-			weld.Name = "CarryingWeld"
-			weld.Parent = rightArm
+			-- Update the toy's position relative to Sid's hand every frame in Heartbeat.
+			-- Since the toy is Anchored, it moves smoothly with Sid but cannot cause flinging!
+			local RunService = game:GetService("RunService")
+			local heartbeatConn = RunService.Heartbeat:Connect(function()
+				if not toyCharacter.Parent or not hunterCharacter.Parent then
+					return
+				end
+				if toyCharacter:GetAttribute("IsCaptured") == true and toyCharacter:GetAttribute("IsCarried") == true then
+					local rArm = hunterCharacter:FindFirstChild("Right Arm")
+					if rArm then
+						local sidScale = 31 / 5
+						toyCharacter:PivotTo(rArm.CFrame * CFrame.new(0, -1.2 * sidScale, 0) * CFrame.Angles(math.rad(-90), 0, 0))
+					end
+				end
+			end)
 
-			carryingWelds[player] = weld
+			carryingConnections[player] = heartbeatConn
+			carryingWelds[player] = true -- placeholder flag for game state checks
 			toyCharacter:SetAttribute("IsCarried", true)
 			carriedToys[player] = toyCharacter
 
@@ -290,11 +298,13 @@ function RescueManager.Release(player: Player)
 
 	-- Remove from carried list if present
 	carriedToys[player] = nil
-	local weld = carryingWelds[player]
-	if weld then
-		weld:Destroy()
-		carryingWelds[player] = nil
+	-- Disconnect manual carrying Heartbeat loop
+	local conn = carryingConnections[player]
+	if conn then
+		conn:Disconnect()
+		carryingConnections[player] = nil
 	end
+	carryingWelds[player] = nil
 
 	char:SetAttribute("IsCarried", false)
 
@@ -358,12 +368,13 @@ function RescueManager.DropCarriedToy(hunterPlayer: Player)
 		if char then
 			print("[ToyStory RescueManager] Toy dropped by Sid:", toyPlayer.Name)
 
-			-- Destroy carrying weld
-			local weld = carryingWelds[toyPlayer]
-			if weld then
-				weld:Destroy()
-				carryingWelds[toyPlayer] = nil
+			-- Disconnect manual carrying Heartbeat loop
+			local conn = carryingConnections[toyPlayer]
+			if conn then
+				conn:Disconnect()
+				carryingConnections[toyPlayer] = nil
 			end
+			carryingWelds[toyPlayer] = nil
 
 			carriedToys[toyPlayer] = nil
 			char:SetAttribute("IsCarried", false)
@@ -431,12 +442,14 @@ function RescueManager.CleanUpPlayer(player: Player)
 		rescuePrompts[player] = nil
 	end
 
-	-- Clean up carried welds/toys
+	-- Clean up carried connection/toys
 	carriedToys[player] = nil
-	if carryingWelds[player] then
-		carryingWelds[player]:Destroy()
-		carryingWelds[player] = nil
+	local conn = carryingConnections[player]
+	if conn then
+		conn:Disconnect()
+		carryingConnections[player] = nil
 	end
+	carryingWelds[player] = nil
 end
 
 function RescueManager.Reset()
@@ -459,6 +472,7 @@ function RescueManager.Reset()
 
 	carriedToys = {}
 	carryingWelds = {}
+	carryingConnections = {}
 
 	if activeCage and activeCage.Parent then
 		activeCage:Destroy()
