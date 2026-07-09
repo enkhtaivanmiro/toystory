@@ -1,5 +1,5 @@
 --[[
-	ToyStory - Client Camera Script
+	ToyStory - Client Camera Script (LocalScript)
 	Handles camera setup for any custom avatar character selection.
 ]]
 
