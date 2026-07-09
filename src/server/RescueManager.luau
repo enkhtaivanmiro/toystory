@@ -1,7 +1,7 @@
 --[[
 	ToyStory - RescueManager (ModuleScript)
-	Handles cage generation, teleporting captured toys, health decay,
-	and creating ProximityPrompts for other toys to rescue them.
+	Handles cage generation, carrying captured toys in Sid's hand,
+	teleporting captured toys, health decay, and rescue ProximityPrompts.
 ]]
 
 local Players = game:GetService("Players")
@@ -9,11 +9,16 @@ local Debris = game:GetService("Debris")
 
 local RescueManager = {}
 local activeCage = nil
-local CAGE_POSITION = Vector3.new(0, 3, 40) -- Default location (can be customized)
+local CAGE_POSITION = Vector3.new(0, 3, 40) -- Default location
 
 local captureConnections = {}
 local damageTasks = {}
 local rescuePrompts = {}
+
+-- Tracking carried toys & welds
+local carriedToys = {} -- Player -> Model
+local carryingWelds = {} -- Player -> WeldConstraint
+local checkLoopActive = false
 
 -- Create a visual cage programmatically if it doesn't exist
 local function createVisualCage()
@@ -69,22 +74,147 @@ local function createVisualCage()
 	return cageModel
 end
 
-function RescueManager.Capture(toyCharacter: Model)
-	local player = Players:GetPlayerFromCharacter(toyCharacter)
-	if not player then return end
+--- Deposits a carried toy into the cage.
+function RescueManager.DepositInCage(player: Player)
+	local char = player.Character
+	if not char then
+		carriedToys[player] = nil
+		return
+	end
+
+	print("[ToyStory RescueManager] Toy deposited in cage:", player.Name)
+
+	-- Remove carrying weld
+	local weld = carryingWelds[player]
+	if weld then
+		weld:Destroy()
+		carryingWelds[player] = nil
+	end
+
+	carriedToys[player] = nil
+	char:SetAttribute("IsCarried", false)
 
 	-- Teleport inside cage
 	createVisualCage()
-	toyCharacter:PivotTo(CFrame.new(CAGE_POSITION + Vector3.new(0, 1, 0)))
+	char:PivotTo(CFrame.new(CAGE_POSITION + Vector3.new(0, 1, 0)))
 
-	-- Anchor Root
-	local root = toyCharacter.PrimaryPart
+	-- Anchor root
+	local root = char.PrimaryPart
 	if root then
 		root.Anchored = true
 	end
 
+	-- Restore platformstand state
+	local humanoid = char:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid.PlatformStand = false
+	end
+
+	-- Restore standard captured collision rules (standard R6 is Torso, Left Leg, Right Leg, HumanoidRootPart collidable)
+	for _, part in char:GetDescendants() do
+		if part:IsA("BasePart") then
+			local name = part.Name
+			if name == "Torso" or name == "Left Leg" or name == "Right Leg" or name == "HumanoidRootPart" then
+				part.CanCollide = true
+			else
+				part.CanCollide = false
+			end
+		end
+	end
+end
+
+--- Starts the background loop that checks distance of carried toys to the cage.
+local function startCheckLoop()
+	if checkLoopActive then return end
+	checkLoopActive = true
+
+	task.spawn(function()
+		while next(carriedToys) ~= nil do
+			task.wait(0.2)
+			for p, char in pairs(carriedToys) do
+				if char and char.Parent then
+					local root = char.PrimaryPart
+					if root then
+						-- Check distance to CAGE_POSITION
+						local dist = (root.Position - CAGE_POSITION).Magnitude
+						if dist <= 15 then
+							-- Deposit inside cage
+							RescueManager.DepositInCage(p)
+						end
+					end
+				else
+					carriedToys[p] = nil
+				end
+			end
+		end
+		checkLoopActive = false
+	end)
+end
+
+function RescueManager.Capture(toyCharacter: Model, hunterCharacter: Model?)
+	local player = Players:GetPlayerFromCharacter(toyCharacter)
+	if not player then return end
+
 	toyCharacter:SetAttribute("IsCaptured", true)
 	print("[ToyStory RescueManager] Toy captured:", player.Name)
+
+	-- Setup carrying if Sid (hunterCharacter) is provided
+	if hunterCharacter then
+		local rightArm = hunterCharacter:FindFirstChild("Right Arm")
+		if rightArm and rightArm:IsA("BasePart") then
+			-- Unanchor root so the toy can be carried
+			local root = toyCharacter.PrimaryPart
+			if root then
+				root.Anchored = false
+			end
+
+			-- Weld toy's primary part to Sid's Right Arm
+			local weld = Instance.new("WeldConstraint")
+			weld.Part0 = rightArm
+			weld.Part1 = root or toyCharacter:FindFirstChild("Torso")
+			weld.Name = "CarryingWeld"
+			weld.Parent = rightArm
+
+			carryingWelds[player] = weld
+			toyCharacter:SetAttribute("IsCarried", true)
+			carriedToys[player] = toyCharacter
+
+			-- Position nicely relative to Sid's hand (Sid is scale ~6.2)
+			local sidScale = 31 / 5
+			toyCharacter:PivotTo(rightArm.CFrame * CFrame.new(0, -1.2 * sidScale, 0) * CFrame.Angles(math.rad(-90), 0, 0))
+
+			-- Platform stand so they don't fight physics
+			local humanoid = toyCharacter:FindFirstChildOfClass("Humanoid")
+			if humanoid then
+				humanoid.PlatformStand = true
+			end
+
+			-- Make parts temporarily non-collidable so they don't glitch Sid's movement
+			for _, part in toyCharacter:GetDescendants() do
+				if part:IsA("BasePart") then
+					part.CanCollide = false
+				end
+			end
+
+			startCheckLoop()
+		else
+			-- Fallback: Teleport directly inside cage
+			createVisualCage()
+			toyCharacter:PivotTo(CFrame.new(CAGE_POSITION + Vector3.new(0, 1, 0)))
+			local root = toyCharacter.PrimaryPart
+			if root then
+				root.Anchored = true
+			end
+		end
+	else
+		-- Teleport directly inside cage
+		createVisualCage()
+		toyCharacter:PivotTo(CFrame.new(CAGE_POSITION + Vector3.new(0, 1, 0)))
+		local root = toyCharacter.PrimaryPart
+		if root then
+			root.Anchored = true
+		end
+	end
 
 	-- Create Rescue ProximityPrompt on Torso
 	local torso = toyCharacter:FindFirstChild("Torso")
@@ -120,7 +250,7 @@ function RescueManager.Capture(toyCharacter: Model)
 	local humanoid = toyCharacter:FindFirstChildOfClass("Humanoid")
 	if humanoid then
 		humanoid.Health = 100
-		
+
 		local taskRef
 		taskRef = task.spawn(function()
 			while toyCharacter:GetAttribute("IsCaptured") == true and humanoid.Health > 0 do
@@ -129,10 +259,10 @@ function RescueManager.Capture(toyCharacter: Model)
 					humanoid.Health = humanoid.Health - 5
 				end)
 			end
-			
+
 			if humanoid.Health <= 0 then
 				-- Eliminate player
-				print("[ToyStory RescueManager] Captured toy died in cage:", player.Name)
+				print("[ToyStory RescueManager] Captured toy died:", player.Name)
 				humanoid:BreakJoints()
 				RescueManager.CleanUpPlayer(player)
 			end
@@ -147,6 +277,22 @@ function RescueManager.Release(player: Player)
 
 	print("[ToyStory RescueManager] Toy rescued:", player.Name)
 
+	-- Remove from carried list if present
+	carriedToys[player] = nil
+	local weld = carryingWelds[player]
+	if weld then
+		weld:Destroy()
+		carryingWelds[player] = nil
+	end
+
+	char:SetAttribute("IsCarried", false)
+
+	-- Restore platformstand state
+	local humanoid = char:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid.PlatformStand = false
+	end
+
 	-- Teleport outside cage
 	char:PivotTo(CFrame.new(CAGE_POSITION + Vector3.new(0, 1, -12)))
 
@@ -157,6 +303,18 @@ function RescueManager.Release(player: Player)
 	end
 
 	char:SetAttribute("IsCaptured", false)
+
+	-- Restore standard captured collision rules
+	for _, part in char:GetDescendants() do
+		if part:IsA("BasePart") then
+			local name = part.Name
+			if name == "Torso" or name == "Left Leg" or name == "Right Leg" or name == "HumanoidRootPart" then
+				part.CanCollide = true
+			else
+				part.CanCollide = false
+			end
+		end
+	end
 
 	-- Clean up rescue connection / tasks
 	RescueManager.CleanUpPlayer(player)
@@ -182,6 +340,13 @@ function RescueManager.CleanUpPlayer(player: Player)
 		rescuePrompts[player]:Destroy()
 		rescuePrompts[player] = nil
 	end
+
+	-- Clean up carried welds/toys
+	carriedToys[player] = nil
+	if carryingWelds[player] then
+		carryingWelds[player]:Destroy()
+		carryingWelds[player] = nil
+	end
 end
 
 function RescueManager.Reset()
@@ -190,12 +355,20 @@ function RescueManager.Reset()
 		local char = player.Character
 		if char then
 			char:SetAttribute("IsCaptured", false)
+			char:SetAttribute("IsCarried", false)
 			local root = char.PrimaryPart
 			if root then
 				root.Anchored = false
 			end
+			local humanoid = char:FindFirstChildOfClass("Humanoid")
+			if humanoid then
+				humanoid.PlatformStand = false
+			end
 		end
 	end
+
+	carriedToys = {}
+	carryingWelds = {}
 
 	if activeCage and activeCage.Parent then
 		activeCage:Destroy()

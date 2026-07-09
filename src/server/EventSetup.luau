@@ -115,7 +115,7 @@ function EventSetup.Init(eventsFolder: Folder, gameLoopManager: any, rescueManag
 			end
 
 			-- Send to cage / Capture
-			rescueManager.Capture(targetToy)
+			rescueManager.Capture(targetToy, char)
 		end
 	end)
 
