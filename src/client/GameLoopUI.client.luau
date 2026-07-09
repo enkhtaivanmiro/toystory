@@ -127,7 +127,6 @@ matchEndedFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 15)
 matchEndedFrame.BackgroundTransparency = 1
 matchEndedFrame.Visible = false
 matchEndedFrame.BorderSizePixel = 0
-matchEndedFrame.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 matchEndedFrame.Parent = screenGui
 
 local statusLabel = Instance.new("TextLabel")
