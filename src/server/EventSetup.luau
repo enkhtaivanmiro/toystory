@@ -158,6 +158,17 @@ function EventSetup.Init(eventsFolder: Folder, gameLoopManager: any, rescueManag
 		end
 	end)
 
+	-- DropToy (Sid manual release request)
+	local dropToyEvent = Utils.GetOrCreateRemoteEvent(eventsFolder, "DropToy")
+	dropToyEvent.OnServerEvent:Connect(function(player)
+		local char = player.Character
+		if char and char:GetAttribute("CharacterName") == "Sid" then
+			if char:GetAttribute("IsCarryingToy") == true then
+				rescueManager.DropCarriedToy(player)
+			end
+		end
+	end)
+
 	-- Pre-create the StunHunter event so it's ready for use
 	Utils.GetOrCreateRemoteEvent(eventsFolder, "StunHunter")
 

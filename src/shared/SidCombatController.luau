@@ -108,6 +108,15 @@ function SidCombatController.Init(
 		end
 
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			-- If Sid is already carrying a toy, pressing Mouse 1 drops them instead of attacking
+			if character:GetAttribute("IsCarryingToy") == true then
+				local dropToyEvent = eventsFolder:FindFirstChild("DropToy")
+				if dropToyEvent then
+					dropToyEvent:FireServer()
+				end
+				return
+			end
+
 			local now = os.clock()
 			if now - lastAttackTime < 0.8 then
 				return

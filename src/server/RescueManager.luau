@@ -328,7 +328,7 @@ function RescueManager.Release(player: Player)
 		end
 	end
 
-	-- Clean up rescue connection / tasks
+	-- Clean up rescue connection / prompts
 	RescueManager.CleanUpPlayer(player)
 
 	-- Play rescue sound
@@ -336,6 +336,75 @@ function RescueManager.Release(player: Player)
 	if head then
 		local Utils = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Utils"))
 		Utils.PlayOneShot(head, "rbxassetid://9114226176", 0.8)
+	end
+end
+
+function RescueManager.DropCarriedToy(hunterPlayer: Player)
+	local toyPlayer = nil
+	for p, _ in pairs(carryingWelds) do
+		toyPlayer = p
+		break
+	end
+
+	if toyPlayer then
+		local char = toyPlayer.Character
+		if char then
+			print("[ToyStory RescueManager] Toy dropped by Sid:", toyPlayer.Name)
+
+			-- Destroy carrying weld
+			local weld = carryingWelds[toyPlayer]
+			if weld then
+				weld:Destroy()
+				carryingWelds[toyPlayer] = nil
+			end
+
+			carriedToys[toyPlayer] = nil
+			char:SetAttribute("IsCarried", false)
+
+			-- Restore platformstand state
+			local humanoid = char:FindFirstChildOfClass("Humanoid")
+			if humanoid then
+				humanoid.PlatformStand = false
+			end
+
+			-- Drop right in front of Sid
+			local sidChar = hunterPlayer.Character
+			if sidChar then
+				local root = sidChar.PrimaryPart
+				if root then
+					char:PivotTo(root.CFrame * CFrame.new(0, 0, -10)) -- 10 studs in front of Sid
+				end
+			end
+
+			-- Restore network ownership to player
+			local root = char.PrimaryPart
+			if root then
+				root.Anchored = false
+				pcall(function()
+					root:SetNetworkOwner(toyPlayer)
+				end)
+			end
+
+			char:SetAttribute("IsCaptured", false)
+
+			-- Restore standard captured collision rules
+			for _, part in char:GetDescendants() do
+				if part:IsA("BasePart") then
+					local name = part.Name
+					if name == "Torso" or name == "Left Leg" or name == "Right Leg" or name == "HumanoidRootPart" then
+						part.CanCollide = true
+					else
+						part.CanCollide = false
+					end
+				end
+			end
+
+			-- Clean up rescue connection / prompts
+			RescueManager.CleanUpPlayer(toyPlayer)
+
+			-- Reset Sid carrying attribute
+			resetSidCarrying()
+		end
 	end
 end
 
