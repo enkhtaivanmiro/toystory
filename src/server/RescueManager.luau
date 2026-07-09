@@ -131,6 +131,7 @@ local function startCheckLoop()
 	task.spawn(function()
 		while next(carriedToys) ~= nil do
 			task.wait(0.2)
+			local toDeposit = {}
 			for p, char in pairs(carriedToys) do
 				if char and char.Parent then
 					local root = char.PrimaryPart
@@ -138,13 +139,17 @@ local function startCheckLoop()
 						-- Check distance to CAGE_POSITION
 						local dist = (root.Position - CAGE_POSITION).Magnitude
 						if dist <= 15 then
-							-- Deposit inside cage
-							RescueManager.DepositInCage(p)
+							table.insert(toDeposit, p)
 						end
 					end
 				else
 					carriedToys[p] = nil
 				end
+			end
+
+			-- Perform deposits outside the iteration loop to prevent dictionary mutation errors
+			for _, p in toDeposit do
+				RescueManager.DepositInCage(p)
 			end
 		end
 		checkLoopActive = false

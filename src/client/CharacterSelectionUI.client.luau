@@ -253,11 +253,13 @@ local function printDebugDetails()
 	end
 end
 
-for charName, _ in CharacterConfig do
-	if findCharacterTemplate(charName) then
-		local btn = createCharacterButton(charName)
-		btn.Parent = container
-		hasCharacters = true
+for charName, charData in pairs(CharacterConfig) do
+	if type(charData) == "table" and charData.Height then
+		if findCharacterTemplate(charName) then
+			local btn = createCharacterButton(charName)
+			btn.Parent = container
+			hasCharacters = true
+		end
 	end
 end
 
@@ -277,13 +279,15 @@ if not hasCharacters then
 				lastWarn = tick()
 			end
 
-			for charName, _ in CharacterConfig do
-				if findCharacterTemplate(charName) then
-					subtitle.Text = "Choose a character to enter the game"
-					subtitle.TextColor3 = Color3.fromRGB(160, 160, 180)
-					local btn = createCharacterButton(charName)
-					btn.Parent = container
-					hasCharacters = true
+			for charName, charData in pairs(CharacterConfig) do
+				if type(charData) == "table" and charData.Height then
+					if findCharacterTemplate(charName) then
+						subtitle.Text = "Choose a character to enter the game"
+						subtitle.TextColor3 = Color3.fromRGB(160, 160, 180)
+						local btn = createCharacterButton(charName)
+						btn.Parent = container
+						hasCharacters = true
+					end
 				end
 			end
 		end

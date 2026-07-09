@@ -148,6 +148,20 @@ end
 
 --- Update humanoid speed and collision state.
 local function updateSpeed()
+	local isCaptured = character:GetAttribute("IsCaptured") or false
+	if isCaptured then
+		humanoid.WalkSpeed = 0
+		humanoid.JumpPower = 0
+		
+		-- Disable all collisions while captured/carried to prevent weld glitches
+		for _, desc in character:GetDescendants() do
+			if desc:IsA("BasePart") then
+				desc.CanCollide = false
+			end
+		end
+		return
+	end
+
 	if LayDownController.IsLayingDown then
 		humanoid.WalkSpeed = 0
 		humanoid.JumpPower = 0
@@ -240,6 +254,11 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		return
 	end
 
+	local isCaptured = character:GetAttribute("IsCaptured") or false
+	if isCaptured then
+		return
+	end
+
 	-- Shift to Sprint
 	if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
 		if FlightController.IsFlying then
@@ -279,6 +298,11 @@ UserInputService.InputBegan:Connect(function(input, processed)
 end)
 
 UserInputService.InputEnded:Connect(function(input)
+	local isCaptured = character:GetAttribute("IsCaptured") or false
+	if isCaptured then
+		return
+	end
+
 	if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
 		isSprinting = false
 		updateSpeed()
@@ -361,6 +385,22 @@ humanoid.StateChanged:Connect(function(_oldState, newState)
 	if newState == Enum.HumanoidStateType.Landed then
 		isJumping = false
 		isFalling = false
+	end
+end)
+
+-- Connect to IsCaptured attribute changed signal
+character:GetAttributeChangedSignal("IsCaptured"):Connect(function()
+	local isCaptured = character:GetAttribute("IsCaptured") or false
+	if isCaptured then
+		-- Stop active flight/glide
+		if characterName == "Buzz" then
+			FlightController.UpdateFlightState(false, rootPart, humanoid)
+		end
+		-- Stop play dead
+		if LayDownController.IsLayingDown then
+			LayDownController.Toggle(character, nil)
+		end
+		updateSpeed()
 	end
 end)
 
