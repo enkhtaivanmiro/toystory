@@ -8,6 +8,8 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local Utils = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Utils"))
+
 local ObjectiveManager = {}
 
 local batteriesVal = ReplicatedStorage:WaitForChild("GameState"):WaitForChild("TimeRemaining").Parent:WaitForChild("BatteriesCollected")
@@ -225,7 +227,6 @@ function ObjectiveManager.InitializeObjectives()
 				-- Play collect sound
 				local head = char:FindFirstChild("Head")
 				if head then
-					local Utils = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Utils"))
 					Utils.PlayOneShot(head, "rbxassetid://9114223126", 0.6)
 				end
 
@@ -278,7 +279,6 @@ function ObjectiveManager.OpenEscapeZone()
 				-- Play escape chime
 				local head = char:FindFirstChild("Head")
 				if head then
-					local Utils = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Utils"))
 					Utils.PlayOneShot(head, "rbxassetid://9114227181", 1.0)
 				end
 
@@ -330,9 +330,9 @@ function ObjectiveManager.ClearObjectives()
 	end
 	batteryConnections = {}
 
-	-- Restore all batteries to visible state for next round
+	-- Hide all batteries at end of round (they'll be re-shown at next InitializeObjectives)
 	for _, battery in allBatteryObjects do
-		showBattery(battery)
+		hideBattery(battery)
 	end
 
 	activeBatteries = {}

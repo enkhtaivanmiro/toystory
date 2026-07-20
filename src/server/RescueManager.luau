@@ -6,9 +6,11 @@
 ]]
 
 local Players = game:GetService("Players")
-local Debris = game:GetService("Debris")
 local PhysicsService = game:GetService("PhysicsService")
 local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Utils = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Utils"))
 
 local RescueManager = {}
 
@@ -22,11 +24,28 @@ local carryingWelds = {} -- Player -> WeldConstraint (placeholder)
 local carryingConnections = {} -- Player -> RBXScriptConnection (for manual CFrame carrying)
 
 -- PrisonBox state
-local prisonBox = nil -- Reference to the PrisonBox object in workspace
-local prisonedToys = {} -- Array of { player: Player, character: Model }
-local depositPrompt = nil -- ProximityPrompt for Sid to deposit
-local rescuePrompt = nil -- ProximityPrompt for toys to rescue
-local sidAttributeConnection = nil -- Connection listening for Sid's IsCarryingToy changes
+local prisonBox = nil
+local prisonedToys = {}
+local depositPrompt = nil
+local rescuePrompt = nil
+local sidAttributeConnection = nil
+local playerAddedConnection = nil -- tracked so it's not duplicated across rounds
+
+-- ──────────────────────────────────────────────────────────
+-- Private helpers
+-- ──────────────────────────────────────────────────────────
+
+--- Restores collision group and CanCollide rules on a released character.
+local SOLID_PARTS = { Torso = true, ["Left Leg"] = true, ["Right Leg"] = true, HumanoidRootPart = true }
+local function restoreCharPhysics(char: Model, group: string)
+	for _, part in char:GetDescendants() do
+		if part:IsA("BasePart") then
+			part.CollisionGroup = group
+			part.Massless = false
+			part.CanCollide = SOLID_PARTS[part.Name] == true
+		end
+	end
+end
 
 --- Resets the IsCarryingToy attribute on all Sid characters.
 local function resetSidCarrying()
@@ -149,16 +168,7 @@ function RescueManager.DepositInPrisonBox(toyPlayer: Player)
 	end
 
 	-- Restore standard captured collision rules
-	for _, part in char:GetDescendants() do
-		if part:IsA("BasePart") then
-			local name = part.Name
-			if name == "Torso" or name == "Left Leg" or name == "Right Leg" or name == "HumanoidRootPart" then
-				part.CanCollide = true
-			else
-				part.CanCollide = false
-			end
-		end
-	end
+	restoreCharPhysics(char, "Toys")
 
 	-- Reset Sid carrying attribute since toy was deposited
 	resetSidCarrying()
@@ -312,18 +322,7 @@ function RescueManager.ReleaseFromPrisonBox(rescuingPlayer: Player)
 	char:SetAttribute("IsCaptured", false)
 
 	-- Restore standard collision rules and collision group
-	for _, part in char:GetDescendants() do
-		if part:IsA("BasePart") then
-			part.CollisionGroup = "Toys"
-			part.Massless = false
-			local name = part.Name
-			if name == "Torso" or name == "Left Leg" or name == "Right Leg" or name == "HumanoidRootPart" then
-				part.CanCollide = true
-			else
-				part.CanCollide = false
-			end
-		end
-	end
+	restoreCharPhysics(char, "Toys")
 
 	-- Clean up rescue connection / prompts for this player
 	RescueManager.CleanUpPlayer(toyPlayer)
@@ -331,7 +330,6 @@ function RescueManager.ReleaseFromPrisonBox(rescuingPlayer: Player)
 	-- Play rescue sound
 	local head = char:FindFirstChild("Head")
 	if head then
-		local Utils = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Utils"))
 		Utils.PlayOneShot(head, "rbxassetid://9114226176", 0.8)
 	end
 
@@ -390,18 +388,7 @@ function RescueManager.Release(player: Player)
 	resetSidCarrying()
 
 	-- Restore standard captured collision rules and collision group
-	for _, part in char:GetDescendants() do
-		if part:IsA("BasePart") then
-			part.CollisionGroup = "Toys"
-			part.Massless = false
-			local name = part.Name
-			if name == "Torso" or name == "Left Leg" or name == "Right Leg" or name == "HumanoidRootPart" then
-				part.CanCollide = true
-			else
-				part.CanCollide = false
-			end
-		end
-	end
+	restoreCharPhysics(char, "Toys")
 
 	-- Clean up rescue connection / prompts
 	RescueManager.CleanUpPlayer(player)
@@ -409,7 +396,6 @@ function RescueManager.Release(player: Player)
 	-- Play rescue sound
 	local head = char:FindFirstChild("Head")
 	if head then
-		local Utils = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Utils"))
 		Utils.PlayOneShot(head, "rbxassetid://9114226176", 0.8)
 	end
 
@@ -468,18 +454,7 @@ function RescueManager.DropCarriedToy(hunterPlayer: Player)
 			char:SetAttribute("IsCaptured", false)
 
 			-- Restore standard captured collision rules and collision group
-			for _, part in char:GetDescendants() do
-				if part:IsA("BasePart") then
-					part.CollisionGroup = "Toys"
-					part.Massless = false
-					local name = part.Name
-					if name == "Torso" or name == "Left Leg" or name == "Right Leg" or name == "HumanoidRootPart" then
-						part.CanCollide = true
-					else
-						part.CanCollide = false
-					end
-				end
-			end
+			restoreCharPhysics(char, "Toys")
 
 			-- Clean up rescue connection / prompts
 			RescueManager.CleanUpPlayer(toyPlayer)
@@ -611,20 +586,33 @@ function RescueManager.InitPrisonBox()
 		end
 	end
 
-	for _, player in Players:GetPlayers() do
-		hookSidAttributeListener(player)
-		player.CharacterAdded:Connect(function()
-			task.wait(1) -- Wait for attributes to be set
+	-- Only connect PlayerAdded once (not every round)
+	if not playerAddedConnection then
+		for _, player in Players:GetPlayers() do
 			hookSidAttributeListener(player)
+			player.CharacterAdded:Connect(function()
+				task.wait(1)
+				hookSidAttributeListener(player)
+			end)
+		end
+
+		playerAddedConnection = Players.PlayerAdded:Connect(function(player)
+			player.CharacterAdded:Connect(function()
+				task.wait(1)
+				hookSidAttributeListener(player)
+			end)
+		end)
+
+		-- Clean up stale prisoned toys when a player leaves
+		Players.PlayerRemoving:Connect(function(leavingPlayer)
+			for i = #prisonedToys, 1, -1 do
+				if prisonedToys[i].player == leavingPlayer then
+					table.remove(prisonedToys, i)
+				end
+			end
+			updateRescuePromptState()
 		end)
 	end
-
-	Players.PlayerAdded:Connect(function(player)
-		player.CharacterAdded:Connect(function()
-			task.wait(1)
-			hookSidAttributeListener(player)
-		end)
-	end)
 
 	print("[ToyStory RescueManager] PrisonBox initialized with deposit (3s) and rescue (5s) prompts!")
 end
