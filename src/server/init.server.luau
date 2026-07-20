@@ -50,6 +50,23 @@ local selectCharacterEvent = Utils.GetOrCreateRemoteEvent(eventsFolder, "SelectC
 local playerSelections: { [Player]: string } = {}
 local swapping: { [Player]: boolean } = {}
 
+local function updateTakenAttributes()
+	local gameStateFolder = ReplicatedStorage:FindFirstChild("GameState")
+	if not gameStateFolder then return end
+
+	-- Clear all taken attributes first
+	for _, toyName in ipairs({"Buzz", "Woody", "Slinky", "PotatoHead", "Rex"}) do
+		gameStateFolder:SetAttribute("Taken_" .. toyName, nil)
+	end
+
+	-- Set taken attributes based on current player selections
+	for player, characterName in pairs(playerSelections) do
+		if characterName ~= "Sid" then
+			gameStateFolder:SetAttribute("Taken_" .. characterName, player.Name)
+		end
+	end
+end
+
 --- Find a character template model by name across known locations.
 local function findTemplate(characterName: string): Model?
 	-- 1. Characters folder
@@ -147,7 +164,19 @@ end
 
 -- Listen to selection request
 selectCharacterEvent.OnServerEvent:Connect(function(player, characterName)
+	-- If it's a toy character, check if it is already taken by another player
+	if characterName ~= "Sid" then
+		for otherPlayer, selectedName in pairs(playerSelections) do
+			if otherPlayer ~= player and selectedName == characterName then
+				warn("[ToyStory Server] Character selection rejected: " .. characterName .. " is already taken by " .. otherPlayer.Name)
+				return
+			end
+		end
+	end
+
 	playerSelections[player] = characterName
+	updateTakenAttributes()
+
 	if player.Character then
 		swapCharacter(player, player.Character, characterName)
 	end
@@ -167,6 +196,7 @@ end
 Players.PlayerRemoving:Connect(function(player)
 	playerSelections[player] = nil
 	swapping[player] = nil
+	updateTakenAttributes()
 end)
 
 for _, player in Players:GetPlayers() do
@@ -179,6 +209,9 @@ NpcSpawner.BuildCallback = CharacterRigger.Build
 
 -- Initialize event handlers
 EventSetup.Init(eventsFolder, GameLoopManager, RescueManager)
+
+-- Initialize PrisonBox (deposit/rescue prompts on the workspace PrisonBox object)
+RescueManager.InitPrisonBox()
 
 -- Initialize game loop (connects all subsystems)
 GameLoopManager.Init(NpcSpawner, ObjectiveManager, RescueManager)

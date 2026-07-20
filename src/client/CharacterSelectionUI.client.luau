@@ -14,6 +14,7 @@ local playerGui = player:WaitForChild("PlayerGui")
 -- Configuration
 local CharacterConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("CharacterConfig"))
 local eventsFolder = ReplicatedStorage:WaitForChild("Events")
+local gameStateFolder = ReplicatedStorage:WaitForChild("GameState")
 
 -- Wait for the RemoteEvent to be ready
 local selectCharacterEvent = eventsFolder:WaitForChild("SelectCharacter", 10)
@@ -121,6 +122,7 @@ local function createCharacterButton(name: string)
 	button.TextSize = 20
 	button.TextColor3 = Color3.fromRGB(240, 240, 240)
 	button.AutoButtonColor = false
+	button.TextWrapped = true
 
 	local buttonCorner = Instance.new("UICorner")
 	buttonCorner.CornerRadius = UDim.new(0, 8)
@@ -141,17 +143,57 @@ local function createCharacterButton(name: string)
 		TextColor3 = Color3.fromRGB(240, 240, 240)
 	})
 
+	local function updateButtonState()
+		if name == "Sid" then return end
+		local takenBy = gameStateFolder:GetAttribute("Taken_" .. name)
+		if takenBy and takenBy ~= player.Name then
+			button.BackgroundColor3 = Color3.fromRGB(24, 24, 32)
+			button.TextColor3 = Color3.fromRGB(100, 100, 110)
+			button.Text = name:upper() .. "\n[TAKEN]"
+			buttonStroke.Color = Color3.fromRGB(40, 40, 50)
+		else
+			button.BackgroundColor3 = Color3.fromRGB(36, 36, 48)
+			button.TextColor3 = Color3.fromRGB(240, 240, 240)
+			button.Text = name:upper()
+			buttonStroke.Color = Color3.fromRGB(60, 60, 80)
+		end
+	end
+
+	-- Listen for attribute updates in real-time
+	local stateConnection = gameStateFolder:GetAttributeChangedSignal("Taken_" .. name):Connect(updateButtonState)
+	updateButtonState()
+
+	-- Clean up connection if button is destroyed
+	button.AncestryChanged:Connect(function()
+		if not button.Parent then
+			stateConnection:Disconnect()
+		end
+	end)
+
 	button.MouseEnter:Connect(function()
+		if name ~= "Sid" then
+			local takenBy = gameStateFolder:GetAttribute("Taken_" .. name)
+			if takenBy and takenBy ~= player.Name then return end
+		end
 		hoverTween:Play()
 		TweenService:Create(buttonStroke, TweenInfo.new(0.2), { Color = Color3.fromRGB(120, 120, 160) }):Play()
 	end)
 
 	button.MouseLeave:Connect(function()
+		if name ~= "Sid" then
+			local takenBy = gameStateFolder:GetAttribute("Taken_" .. name)
+			if takenBy and takenBy ~= player.Name then return end
+		end
 		normalTween:Play()
 		TweenService:Create(buttonStroke, TweenInfo.new(0.2), { Color = Color3.fromRGB(60, 60, 80) }):Play()
 	end)
 
 	button.MouseButton1Click:Connect(function()
+		if name ~= "Sid" then
+			local takenBy = gameStateFolder:GetAttribute("Taken_" .. name)
+			if takenBy and takenBy ~= player.Name then return end
+		end
+
 		-- Play click flash effect
 		button.BackgroundColor3 = Color3.fromRGB(80, 80, 110)
 		task.wait(0.1)

@@ -8,6 +8,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Utils = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Utils"))
+local BabyFaceManager = require(script.Parent:WaitForChild("BabyFaceManager"))
 
 local GameLoopManager = {}
 
@@ -129,6 +130,8 @@ function GameLoopManager.SetPhase(newPhase: string)
 		-- Reset cage/captures
 		if RescueManager then
 			RescueManager.Reset()
+			-- Re-initialize PrisonBox prompts for the new round
+			RescueManager.InitPrisonBox()
 		end
 		-- Reset mistake counter on Hunter player
 		local hunter = getHunterPlayer()
@@ -136,6 +139,8 @@ function GameLoopManager.SetPhase(newPhase: string)
 			hunter:SetAttribute("SidMistakes", 0)
 			hunter:SetAttribute("SidDistorted", false)
 		end
+		-- Spawn BabyFace NPC
+		BabyFaceManager.Spawn()
 		-- Set timer to 20 seconds
 		GameLoopManager.TimeRemaining = 20
 	elseif newPhase == "Search" then
@@ -161,6 +166,8 @@ function GameLoopManager.SetPhase(newPhase: string)
 		if ObjectiveManager then
 			ObjectiveManager.ClearObjectives()
 		end
+		-- Clean up BabyFace NPC
+		BabyFaceManager.CleanUp()
 		-- Set timer to 15 seconds cooldown
 		GameLoopManager.TimeRemaining = 15
 	end

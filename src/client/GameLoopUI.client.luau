@@ -19,6 +19,7 @@ local batteriesVal = gameStateFolder:WaitForChild("BatteriesCollected")
 
 local eventsFolder = ReplicatedStorage:WaitForChild("Events")
 local gameEndedEvent = eventsFolder:WaitForChild("GameEnded", 10)
+local stunToyEvent = eventsFolder:WaitForChild("StunToy", 10)
 
 -- ========================================
 -- UI HUD Elements Creation (Programmatic)
@@ -152,6 +153,39 @@ subStatusLabel.Parent = matchEndedFrame
 
 screenGui.Parent = playerGui
 
+-- Developer Start Round Button (only for Mir0bn)
+local devStartButton = nil
+if localPlayer.Name == "Mir0bn" then
+	devStartButton = Instance.new("TextButton")
+	devStartButton.Name = "DevStartButton"
+	devStartButton.Size = UDim2.fromOffset(160, 40)
+	devStartButton.Position = UDim2.new(0.5, -80, 0.02, 105)
+	devStartButton.BackgroundColor3 = Color3.fromRGB(46, 204, 113) -- Emerald green
+	devStartButton.BorderSizePixel = 0
+	devStartButton.Font = Enum.Font.FredokaOne
+	devStartButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+	devStartButton.TextSize = 16
+	devStartButton.Text = "START ROUND"
+	devStartButton.Visible = (phaseVal.Value == "Lobby")
+	devStartButton.Parent = screenGui
+
+	local btnCorner = Instance.new("UICorner")
+	btnCorner.CornerRadius = UDim.new(0, 8)
+	btnCorner.Parent = devStartButton
+
+	local btnStroke = Instance.new("UIStroke")
+	btnStroke.Color = Color3.fromRGB(255, 255, 255)
+	btnStroke.Thickness = 1.5
+	btnStroke.Parent = devStartButton
+
+	devStartButton.MouseButton1Click:Connect(function()
+		local forceStartRoundEvent = eventsFolder:FindFirstChild("ForceStartRound")
+		if forceStartRoundEvent then
+			forceStartRoundEvent:FireServer()
+		end
+	end)
+end
+
 -- ========================================
 -- Dynamic Updates / Value Changed Listeners
 -- ========================================
@@ -195,15 +229,15 @@ local function updateObjectiveText()
 			objectiveLabel.Text = "Objective: Wait for toys to finish hiding..."
 			objectiveLabel.TextColor3 = Color3.fromRGB(160, 160, 180)
 		else
-			objectiveLabel.Text = "Objective: Hide and look for Potato Head parts!"
+			objectiveLabel.Text = "Objective: Hide and look for Batteries!"
 			objectiveLabel.TextColor3 = Color3.fromRGB(52, 152, 219) -- Sky Blue
 		end
 	elseif phase == "Search" then
 		if isSid then
-			objectiveLabel.Text = string.format("Objective: Capture all toys! (Parts assembled: %d / 3)", count)
+			objectiveLabel.Text = string.format("Objective: Capture all toys! (Batteries collected: %d / 5)", count)
 			objectiveLabel.TextColor3 = Color3.fromRGB(231, 76, 60) -- Light Red
 		else
-			objectiveLabel.Text = string.format("Objective: Assemble Mrs. Potato Head! (Parts: %d / 3)", count)
+			objectiveLabel.Text = string.format("Objective: Collect Batteries! (%d / 5)", count)
 			objectiveLabel.TextColor3 = Color3.fromRGB(241, 196, 15) -- Yellow Gold
 		end
 	elseif phase == "Escape" then
@@ -241,6 +275,11 @@ phaseVal.Changed:Connect(function(newVal)
 		phaseLabel.Text = "MATCH OVER"
 		phaseLabel.TextColor3 = Color3.fromRGB(231, 76, 60) -- Alizarin Red
 	end
+
+	if devStartButton then
+		devStartButton.Visible = (newVal == "Lobby")
+	end
+
 	updateObjectiveText()
 end)
 
@@ -312,10 +351,10 @@ if gameEndedEvent then
 			statusLabel.TextColor3 = Color3.fromRGB(46, 204, 113) -- Green
 			if isToy then
 				statusLabel.Text = "VICTORY!"
-				subStatusLabel.Text = "You successfully assembled Mrs. Potato Head!"
+				subStatusLabel.Text = "You collected all the batteries!"
 			else
 				statusLabel.Text = "DEFEAT!"
-				subStatusLabel.Text = "The toys outsmarted you and assembled Mrs. Potato Head!"
+				subStatusLabel.Text = "The toys outsmarted you and collected all the batteries!"
 			end
 		else
 			-- Hunter (Sid) wins
@@ -361,5 +400,66 @@ ProximityPromptService.PromptShown:Connect(function(prompt)
 		end
 	end
 end)
+
+-- Listen for StunToy event (BabyFace capture)
+if stunToyEvent then
+	stunToyEvent.OnClientEvent:Connect(function(duration)
+		local stunGui = Instance.new("ScreenGui")
+		stunGui.Name = "ToyStunGui"
+		stunGui.ResetOnSpawn = true
+
+		local frame = Instance.new("Frame")
+		frame.Size = UDim2.fromScale(1, 1)
+		frame.BackgroundColor3 = Color3.fromRGB(30, 10, 10)
+		frame.BackgroundTransparency = 0.55
+		frame.BorderSizePixel = 0
+		frame.Parent = stunGui
+
+		local label = Instance.new("TextLabel")
+		label.Size = UDim2.new(0, 500, 0, 100)
+		label.Position = UDim2.new(0.5, -250, 0.4, -50)
+		label.BackgroundTransparency = 1
+		label.TextColor3 = Color3.fromRGB(231, 76, 60) -- Bright Red
+		label.Font = Enum.Font.FredokaOne
+		label.TextSize = 36
+		label.Parent = frame
+
+		local subLabel = Instance.new("TextLabel")
+		subLabel.Size = UDim2.new(0, 500, 0, 40)
+		subLabel.Position = UDim2.new(0.5, -250, 0.4, 40)
+		subLabel.BackgroundTransparency = 1
+		subLabel.TextColor3 = Color3.fromRGB(240, 240, 240)
+		subLabel.Font = Enum.Font.GothamBold
+		subLabel.TextSize = 18
+		subLabel.Text = "You are frozen in place!"
+		subLabel.Parent = frame
+
+		stunGui.Parent = playerGui
+
+		-- Play scary heart beat sound effect locally
+		local RunService = game:GetService("RunService")
+		local camera = workspace.CurrentCamera
+		local start = os.clock()
+		
+		local connection
+		connection = RunService.RenderStepped:Connect(function()
+			local elapsed = os.clock() - start
+			if elapsed >= duration then
+				connection:Disconnect()
+				stunGui:Destroy()
+			else
+				-- Update countdown text
+				label.Text = string.format("TRAPPED BY BABYFACE!\n%.1f SECONDS REMAINING", math.max(0, duration - elapsed))
+				-- Screen shake
+				local shake = Vector3.new(
+					math.random(-10, 10) * 0.04,
+					math.random(-10, 10) * 0.04,
+					0
+				)
+				camera.CFrame = camera.CFrame * CFrame.new(shake)
+			end
+		end)
+	end)
+end
 
 print("[ToyStory GameLoopUI] Client HUD loaded!")

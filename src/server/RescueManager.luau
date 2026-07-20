@@ -1,16 +1,16 @@
 --[[
 	ToyStory - RescueManager (ModuleScript)
-	Handles cage generation, carrying captured toys in Sid's hand,
-	teleporting captured toys, health decay, and rescue ProximityPrompts.
+	Handles carrying captured toys in Sid's hand,
+	depositing them into the PrisonBox (hold E for 3s),
+	and rescuing them from the PrisonBox (hold E for 5s by another toy).
 ]]
 
 local Players = game:GetService("Players")
 local Debris = game:GetService("Debris")
 local PhysicsService = game:GetService("PhysicsService")
+local RunService = game:GetService("RunService")
 
 local RescueManager = {}
-local activeCage = nil
-local CAGE_POSITION = Vector3.new(0, 3, 40) -- Default location
 
 local captureConnections = {}
 local damageTasks = {}
@@ -20,63 +20,15 @@ local rescuePrompts = {}
 local carriedToys = {} -- Player -> Model
 local carryingWelds = {} -- Player -> WeldConstraint (placeholder)
 local carryingConnections = {} -- Player -> RBXScriptConnection (for manual CFrame carrying)
-local checkLoopActive = false
 
--- Create a visual cage programmatically if it doesn't exist
-local function createVisualCage()
-	if activeCage and activeCage.Parent then
-		return activeCage
-	end
+-- PrisonBox state
+local prisonBox = nil -- Reference to the PrisonBox object in workspace
+local prisonedToys = {} -- Array of { player: Player, character: Model }
+local depositPrompt = nil -- ProximityPrompt for Sid to deposit
+local rescuePrompt = nil -- ProximityPrompt for toys to rescue
+local sidAttributeConnection = nil -- Connection listening for Sid's IsCarryingToy changes
 
-	local cageModel = Instance.new("Model")
-	cageModel.Name = "CaptureCage"
-
-	-- Main Floor
-	local floor = Instance.new("Part")
-	floor.Name = "Floor"
-	floor.Size = Vector3.new(16, 1, 16)
-	floor.Position = CAGE_POSITION - Vector3.new(0, 0.5, 0)
-	floor.Anchored = true
-	floor.Material = Enum.Material.Metal
-	floor.Color = Color3.fromRGB(80, 80, 80)
-	floor.Parent = cageModel
-
-	-- Cage walls (Semi-transparent bars style)
-	local wallParams = {
-		{Size = Vector3.new(16, 12, 1), Position = CAGE_POSITION + Vector3.new(0, 5.5, 8)},
-		{Size = Vector3.new(16, 12, 1), Position = CAGE_POSITION + Vector3.new(0, 5.5, -8)},
-		{Size = Vector3.new(1, 12, 16), Position = CAGE_POSITION + Vector3.new(8, 5.5, 0)},
-		{Size = Vector3.new(1, 12, 16), Position = CAGE_POSITION + Vector3.new(-8, 5.5, 0)},
-	}
-
-	for i, param in wallParams do
-		local wall = Instance.new("Part")
-		wall.Name = "Wall" .. i
-		wall.Size = param.Size
-		wall.Position = param.Position
-		wall.Anchored = true
-		wall.Material = Enum.Material.Glass
-		wall.Color = Color3.fromRGB(150, 50, 50)
-		wall.Transparency = 0.6
-		wall.Parent = cageModel
-	end
-
-	-- Ceiling
-	local ceiling = Instance.new("Part")
-	ceiling.Name = "Ceiling"
-	ceiling.Size = Vector3.new(16, 1, 16)
-	ceiling.Position = CAGE_POSITION + Vector3.new(0, 11.5, 0)
-	ceiling.Anchored = true
-	ceiling.Material = Enum.Material.Metal
-	ceiling.Color = Color3.fromRGB(50, 50, 50)
-	ceiling.Parent = cageModel
-
-	cageModel.Parent = workspace
-	activeCage = cageModel
-	return cageModel
-end
-
---- Deposits a carried toy into the cage.
+--- Resets the IsCarryingToy attribute on all Sid characters.
 local function resetSidCarrying()
 	for _, p in ipairs(Players:GetPlayers()) do
 		local c = p.Character
@@ -86,29 +38,103 @@ local function resetSidCarrying()
 	end
 end
 
-function RescueManager.DepositInCage(player: Player)
-	local char = player.Character
+--- Updates the rescue prompt visibility based on whether any toys are imprisoned.
+local function updateRescuePromptState()
+	if rescuePrompt then
+		rescuePrompt.Enabled = (#prisonedToys > 0)
+	end
+end
+
+--- Updates the deposit prompt visibility based on whether Sid is carrying a toy.
+local function updateDepositPromptState()
+	if not depositPrompt then return end
+
+	local sidCarrying = false
+	for _, p in ipairs(Players:GetPlayers()) do
+		local c = p.Character
+		if c and c:GetAttribute("CharacterName") == "Sid" and c:GetAttribute("IsCarryingToy") == true then
+			sidCarrying = true
+			break
+		end
+	end
+
+	depositPrompt.Enabled = sidCarrying
+end
+
+--- Gets a safe position near the PrisonBox for depositing toys.
+--- Offsets each toy slightly so multiple toys don't stack on top of each other.
+local function getPrisonPosition(index: number): CFrame
+	if not prisonBox then
+		return CFrame.new(0, 3, 40)
+	end
+
+	local boxPart = nil
+	if prisonBox:IsA("Model") then
+		boxPart = prisonBox.PrimaryPart or prisonBox:FindFirstChildWhichIsA("BasePart")
+	elseif prisonBox:IsA("BasePart") then
+		boxPart = prisonBox
+	end
+
+	if boxPart then
+		-- Place toys on top of the box, offset each one slightly so they don't overlap
+		local boxCFrame = boxPart.CFrame
+		local boxSize = boxPart.Size
+		local xOffset = ((index - 1) % 3 - 1) * 3 -- -3, 0, 3 pattern
+		local zOffset = math.floor((index - 1) / 3) * 3
+		return boxCFrame * CFrame.new(xOffset, boxSize.Y / 2 + 2, zOffset)
+	end
+
+	return CFrame.new(0, 3, 40)
+end
+
+--- Gets a safe release position near the PrisonBox (outside it).
+local function getReleasePosition(): CFrame
+	if not prisonBox then
+		return CFrame.new(0, 1, 28)
+	end
+
+	local boxPart = nil
+	if prisonBox:IsA("Model") then
+		boxPart = prisonBox.PrimaryPart or prisonBox:FindFirstChildWhichIsA("BasePart")
+	elseif prisonBox:IsA("BasePart") then
+		boxPart = prisonBox
+	end
+
+	if boxPart then
+		-- Teleport 12 studs in front of the box
+		return boxPart.CFrame * CFrame.new(0, 1, -12)
+	end
+
+	return CFrame.new(0, 1, 28)
+end
+
+--- Deposits a carried toy into the PrisonBox.
+function RescueManager.DepositInPrisonBox(toyPlayer: Player)
+	local char = toyPlayer.Character
 	if not char then
-		carriedToys[player] = nil
+		carriedToys[toyPlayer] = nil
 		return
 	end
 
-	print("[ToyStory RescueManager] Toy deposited in cage:", player.Name)
+	print("[ToyStory RescueManager] Toy deposited in PrisonBox:", toyPlayer.Name)
 
 	-- Disconnect manual carrying Heartbeat loop
-	local conn = carryingConnections[player]
+	local conn = carryingConnections[toyPlayer]
 	if conn then
 		conn:Disconnect()
-		carryingConnections[player] = nil
+		carryingConnections[toyPlayer] = nil
 	end
-	carryingWelds[player] = nil
-
-	carriedToys[player] = nil
+	carryingWelds[toyPlayer] = nil
+	carriedToys[toyPlayer] = nil
 	char:SetAttribute("IsCarried", false)
+	char:SetAttribute("IsPrisoned", true)
 
-	-- Teleport inside cage
-	createVisualCage()
-	char:PivotTo(CFrame.new(CAGE_POSITION + Vector3.new(0, 1, 0)))
+	-- Track in prisoned list
+	table.insert(prisonedToys, { player = toyPlayer, character = char })
+
+	-- Teleport inside/on top of PrisonBox
+	local prisonIndex = #prisonedToys
+	char:PivotTo(getPrisonPosition(prisonIndex))
 
 	-- Anchor root
 	local root = char.PrimaryPart
@@ -122,7 +148,7 @@ function RescueManager.DepositInCage(player: Player)
 		humanoid.PlatformStand = false
 	end
 
-	-- Restore standard captured collision rules (standard R6 is Torso, Left Leg, Right Leg, HumanoidRootPart collidable)
+	-- Restore standard captured collision rules
 	for _, part in char:GetDescendants() do
 		if part:IsA("BasePart") then
 			local name = part.Name
@@ -136,39 +162,10 @@ function RescueManager.DepositInCage(player: Player)
 
 	-- Reset Sid carrying attribute since toy was deposited
 	resetSidCarrying()
-end
 
---- Starts the background loop that checks distance of carried toys to the cage.
-local function startCheckLoop()
-	if checkLoopActive then return end
-	checkLoopActive = true
-
-	task.spawn(function()
-		while next(carriedToys) ~= nil do
-			task.wait(0.2)
-			local toDeposit = {}
-			for p, char in pairs(carriedToys) do
-				if char and char.Parent then
-					local root = char.PrimaryPart
-					if root then
-						-- Check distance to CAGE_POSITION
-						local dist = (root.Position - CAGE_POSITION).Magnitude
-						if dist <= 15 then
-							table.insert(toDeposit, p)
-						end
-					end
-				else
-					carriedToys[p] = nil
-				end
-			end
-
-			-- Perform deposits outside the iteration loop to prevent dictionary mutation errors
-			for _, p in toDeposit do
-				RescueManager.DepositInCage(p)
-			end
-		end
-		checkLoopActive = false
-	end)
+	-- Update prompt states
+	updateDepositPromptState()
+	updateRescuePromptState()
 end
 
 function RescueManager.Capture(toyCharacter: Model, hunterCharacter: Model?)
@@ -193,7 +190,6 @@ function RescueManager.Capture(toyCharacter: Model, hunterCharacter: Model?)
 
 			-- Update the toy's position relative to Sid's hand every frame in Heartbeat.
 			-- Since the toy is Anchored, it moves smoothly with Sid but cannot cause flinging!
-			local RunService = game:GetService("RunService")
 			local heartbeatConn = RunService.Heartbeat:Connect(function()
 				if not toyCharacter.Parent or not hunterCharacter.Parent then
 					return
@@ -233,27 +229,12 @@ function RescueManager.Capture(toyCharacter: Model, hunterCharacter: Model?)
 				end
 			end
 
-			startCheckLoop()
-		else
-			-- Fallback: Teleport directly inside cage
-			createVisualCage()
-			toyCharacter:PivotTo(CFrame.new(CAGE_POSITION + Vector3.new(0, 1, 0)))
-			local root = toyCharacter.PrimaryPart
-			if root then
-				root.Anchored = true
-			end
-		end
-	else
-		-- Teleport directly inside cage
-		createVisualCage()
-		toyCharacter:PivotTo(CFrame.new(CAGE_POSITION + Vector3.new(0, 1, 0)))
-		local root = toyCharacter.PrimaryPart
-		if root then
-			root.Anchored = true
+			-- Update deposit prompt so Sid can see it now
+			updateDepositPromptState()
 		end
 	end
 
-	-- Create Rescue ProximityPrompt on Torso
+	-- Create Rescue ProximityPrompt on Torso (for direct rescue while being carried)
 	local torso = toyCharacter:FindFirstChild("Torso")
 	if torso then
 		local prompt = Instance.new("ProximityPrompt")
@@ -290,6 +271,74 @@ function RescueManager.Capture(toyCharacter: Model, hunterCharacter: Model?)
 	end
 end
 
+--- Releases a toy from the PrisonBox specifically.
+function RescueManager.ReleaseFromPrisonBox(rescuingPlayer: Player)
+	if #prisonedToys == 0 then return end
+
+	-- Release the first imprisoned toy (FIFO order)
+	local entry = table.remove(prisonedToys, 1)
+	local toyPlayer = entry.player
+	local char = entry.character
+
+	if not char or not char.Parent then
+		-- Character is gone, just update state
+		updateRescuePromptState()
+		return
+	end
+
+	print("[ToyStory RescueManager] Toy rescued from PrisonBox by", rescuingPlayer.Name, ":", toyPlayer.Name)
+
+	char:SetAttribute("IsPrisoned", false)
+	char:SetAttribute("IsCarried", false)
+
+	-- Restore platformstand state
+	local humanoid = char:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid.PlatformStand = false
+	end
+
+	-- Teleport outside PrisonBox
+	char:PivotTo(getReleasePosition())
+
+	-- Unanchor and restore network ownership to the client player
+	local root = char.PrimaryPart
+	if root then
+		root.Anchored = false
+		pcall(function()
+			root:SetNetworkOwner(toyPlayer)
+		end)
+	end
+
+	char:SetAttribute("IsCaptured", false)
+
+	-- Restore standard collision rules and collision group
+	for _, part in char:GetDescendants() do
+		if part:IsA("BasePart") then
+			part.CollisionGroup = "Toys"
+			part.Massless = false
+			local name = part.Name
+			if name == "Torso" or name == "Left Leg" or name == "Right Leg" or name == "HumanoidRootPart" then
+				part.CanCollide = true
+			else
+				part.CanCollide = false
+			end
+		end
+	end
+
+	-- Clean up rescue connection / prompts for this player
+	RescueManager.CleanUpPlayer(toyPlayer)
+
+	-- Play rescue sound
+	local head = char:FindFirstChild("Head")
+	if head then
+		local Utils = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Utils"))
+		Utils.PlayOneShot(head, "rbxassetid://9114226176", 0.8)
+	end
+
+	-- Update prompt states
+	updateRescuePromptState()
+end
+
 function RescueManager.Release(player: Player)
 	local char = player.Character
 	if not char then return end
@@ -308,14 +357,23 @@ function RescueManager.Release(player: Player)
 
 	char:SetAttribute("IsCarried", false)
 
+	-- Remove from prisoned list if present
+	for i, entry in ipairs(prisonedToys) do
+		if entry.player == player then
+			table.remove(prisonedToys, i)
+			break
+		end
+	end
+	char:SetAttribute("IsPrisoned", false)
+
 	-- Restore platformstand state
 	local humanoid = char:FindFirstChildOfClass("Humanoid")
 	if humanoid then
 		humanoid.PlatformStand = false
 	end
 
-	-- Teleport outside cage
-	char:PivotTo(CFrame.new(CAGE_POSITION + Vector3.new(0, 1, -12)))
+	-- Teleport outside PrisonBox
+	char:PivotTo(getReleasePosition())
 
 	-- Unanchor and restore network ownership to the client player
 	local root = char.PrimaryPart
@@ -354,6 +412,10 @@ function RescueManager.Release(player: Player)
 		local Utils = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Utils"))
 		Utils.PlayOneShot(head, "rbxassetid://9114226176", 0.8)
 	end
+
+	-- Update prompt states
+	updateDepositPromptState()
+	updateRescuePromptState()
 end
 
 function RescueManager.DropCarriedToy(hunterPlayer: Player)
@@ -424,8 +486,147 @@ function RescueManager.DropCarriedToy(hunterPlayer: Player)
 
 			-- Reset Sid carrying attribute
 			resetSidCarrying()
+
+			-- Update deposit prompt
+			updateDepositPromptState()
 		end
 	end
+end
+
+--- Initializes the PrisonBox system. Finds the PrisonBox in workspace
+--- and sets up deposit/rescue ProximityPrompts on it.
+function RescueManager.InitPrisonBox()
+	-- Clean up old prompts if re-initializing
+	if depositPrompt then
+		depositPrompt:Destroy()
+		depositPrompt = nil
+	end
+	if rescuePrompt then
+		rescuePrompt:Destroy()
+		rescuePrompt = nil
+	end
+	if sidAttributeConnection then
+		sidAttributeConnection:Disconnect()
+		sidAttributeConnection = nil
+	end
+
+	-- Find the PrisonBox in workspace
+	prisonBox = workspace:FindFirstChild("PrisonBox")
+	if not prisonBox then
+		warn("[ToyStory RescueManager] PrisonBox not found in workspace! Place a Part or Model named 'PrisonBox'.")
+		return
+	end
+
+	-- Determine which part to attach prompts to
+	local promptParent = nil
+	if prisonBox:IsA("Model") then
+		promptParent = prisonBox.PrimaryPart or prisonBox:FindFirstChildWhichIsA("BasePart")
+	elseif prisonBox:IsA("BasePart") then
+		promptParent = prisonBox
+	end
+
+	if not promptParent then
+		warn("[ToyStory RescueManager] PrisonBox has no BasePart to attach prompts to!")
+		return
+	end
+
+	-- === Deposit Prompt (Sid only, 3 second hold) ===
+	depositPrompt = Instance.new("ProximityPrompt")
+	depositPrompt.Name = "PrisonDepositPrompt"
+	depositPrompt.ObjectText = "Prison Box"
+	depositPrompt.ActionText = "Imprison Toy"
+	depositPrompt.HoldDuration = 3.0
+	depositPrompt.MaxActivationDistance = 12
+	depositPrompt.RequiresLineOfSight = false
+	depositPrompt.KeyboardKeyCode = Enum.KeyCode.E
+	depositPrompt.Enabled = false -- Starts disabled, enabled when Sid is carrying
+	depositPrompt.Parent = promptParent
+
+	depositPrompt.Triggered:Connect(function(player)
+		local char = player.Character
+		if not char or char:GetAttribute("CharacterName") ~= "Sid" then
+			return
+		end
+		if char:GetAttribute("IsCarryingToy") ~= true then
+			return
+		end
+
+		-- Find the toy being carried by Sid
+		local toyPlayer = nil
+		for p, _ in pairs(carryingWelds) do
+			toyPlayer = p
+			break
+		end
+
+		if toyPlayer then
+			RescueManager.DepositInPrisonBox(toyPlayer)
+		end
+	end)
+
+	-- === Rescue Prompt (Toys only, 5 second hold) ===
+	rescuePrompt = Instance.new("ProximityPrompt")
+	rescuePrompt.Name = "PrisonRescuePrompt"
+	rescuePrompt.ObjectText = "Prison Box"
+	rescuePrompt.ActionText = "Free Teammate"
+	rescuePrompt.HoldDuration = 5.0
+	rescuePrompt.MaxActivationDistance = 12
+	rescuePrompt.RequiresLineOfSight = false
+	rescuePrompt.KeyboardKeyCode = Enum.KeyCode.E
+	rescuePrompt.Enabled = false -- Starts disabled, enabled when toys are imprisoned
+	rescuePrompt.Parent = promptParent
+
+	rescuePrompt.Triggered:Connect(function(rescuingPlayer)
+		local rescuerChar = rescuingPlayer.Character
+		if not rescuerChar or not rescuerChar:GetAttribute("IsCustomCharacter") then
+			return
+		end
+
+		local charName = rescuerChar:GetAttribute("CharacterName")
+		local isCaptured = rescuerChar:GetAttribute("IsCaptured") or false
+
+		-- Only non-Sid, non-captured toys can rescue
+		if charName == "Sid" or isCaptured then
+			return
+		end
+
+		RescueManager.ReleaseFromPrisonBox(rescuingPlayer)
+	end)
+
+	-- Listen for Sid's IsCarryingToy attribute changes to toggle deposit prompt
+	-- We need to hook into CharacterAdded to catch when Sid spawns
+	local function hookSidAttributeListener(player: Player)
+		local char = player.Character
+		if char and char:GetAttribute("CharacterName") == "Sid" then
+			-- Listen for attribute changes on this Sid character
+			local attrConn = char:GetAttributeChangedSignal("IsCarryingToy"):Connect(function()
+				updateDepositPromptState()
+			end)
+
+			-- Clean up when character is removed
+			char.AncestryChanged:Connect(function()
+				if not char.Parent then
+					attrConn:Disconnect()
+				end
+			end)
+		end
+	end
+
+	for _, player in Players:GetPlayers() do
+		hookSidAttributeListener(player)
+		player.CharacterAdded:Connect(function()
+			task.wait(1) -- Wait for attributes to be set
+			hookSidAttributeListener(player)
+		end)
+	end
+
+	Players.PlayerAdded:Connect(function(player)
+		player.CharacterAdded:Connect(function()
+			task.wait(1)
+			hookSidAttributeListener(player)
+		end)
+	end)
+
+	print("[ToyStory RescueManager] PrisonBox initialized with deposit (3s) and rescue (5s) prompts!")
 end
 
 function RescueManager.CleanUpPlayer(player: Player)
@@ -459,6 +660,7 @@ function RescueManager.Reset()
 		if char then
 			char:SetAttribute("IsCaptured", false)
 			char:SetAttribute("IsCarried", false)
+			char:SetAttribute("IsPrisoned", false)
 			local root = char.PrimaryPart
 			if root then
 				root.Anchored = false
@@ -473,10 +675,20 @@ function RescueManager.Reset()
 	carriedToys = {}
 	carryingWelds = {}
 	carryingConnections = {}
+	prisonedToys = {}
 
-	if activeCage and activeCage.Parent then
-		activeCage:Destroy()
-		activeCage = nil
+	-- Clean up PrisonBox prompts
+	if depositPrompt then
+		depositPrompt:Destroy()
+		depositPrompt = nil
+	end
+	if rescuePrompt then
+		rescuePrompt:Destroy()
+		rescuePrompt = nil
+	end
+	if sidAttributeConnection then
+		sidAttributeConnection:Disconnect()
+		sidAttributeConnection = nil
 	end
 end
 

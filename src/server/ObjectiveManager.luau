@@ -1,218 +1,246 @@
 --[[
 	ToyStory - ObjectiveManager (ModuleScript)
-	Spawns Mrs. Potato Head's parts, welds them to toys when collected,
-	configures Mrs. Potato Head assembly base, and handles toy victory.
+	Uses 9 pre-placed "Battery" objects in workspace.
+	Each round, randomly picks 5 to activate.
+	Toys collect batteries via ProximityPrompt to win.
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Debris = game:GetService("Debris")
 
 local ObjectiveManager = {}
 
 local batteriesVal = ReplicatedStorage:WaitForChild("GameState"):WaitForChild("TimeRemaining").Parent:WaitForChild("BatteriesCollected")
 
-local spawnedBatteries = {}
-local activeRcCar = nil
+local BATTERIES_NEEDED = 5
+local TOTAL_SPAWN_POINTS = 9
+
+-- All Battery objects found in workspace (stored at init)
+local allBatteryObjects = {} -- Array of Battery Parts/Models
+local activeBatteries = {} -- Array of currently active Battery objects this round
+local batteryPrompts = {} -- Battery -> ProximityPrompt
+local batteryConnections = {} -- Battery -> RBXScriptConnection
+
 local activeEscapeZone = nil
 local escapeTouchedConnection = nil
-
-local RC_CAR_POSITION = Vector3.new(0, 1.2, 0)
 local ESCAPE_ZONE_POSITION = Vector3.new(0, 1, -55) -- Escape boundary
 
--- Spawning boundary box (raycasts down to find surfaces)
-local SPAWN_BOUNDS_X = {-50, 50}
-local SPAWN_BOUNDS_Z = {-50, 50}
-local SPAWN_HEIGHT_START = 35
-
--- Helper to spawn visual Potato Head Part programmatically
-local function createPotatoHeadPart(position: Vector3, partIndex: number): Part
-	local part = Instance.new("Part")
-	part.Name = "PotatoHeadPart"
-	part.Size = Vector3.new(1, 1, 1)
-	part.Position = position + Vector3.new(0, 0.5, 0)
-	part.Material = Enum.Material.SmoothPlastic
-	part.Anchored = false
-	part.CanCollide = true
-
-	-- Determine style based on index (so they collect different parts)
-	if partIndex == 1 or partIndex == 4 then
-		part.Color = Color3.fromRGB(52, 152, 219) -- Blue (Eye)
-		part.Shape = Enum.PartType.Ball
-		part.Size = Vector3.new(0.8, 0.8, 0.8)
-	elseif partIndex == 2 or partIndex == 5 then
-		part.Color = Color3.fromRGB(244, 143, 177) -- Pink (Ear)
-		part.Size = Vector3.new(0.6, 1.2, 0.4)
-	else
-		part.Color = Color3.fromRGB(231, 76, 60) -- Red (Lips)
-		part.Size = Vector3.new(1.2, 0.5, 0.5)
+--- Finds all Battery objects in workspace and caches them.
+local function discoverBatteries()
+	allBatteryObjects = {}
+	for _, obj in workspace:GetChildren() do
+		if obj.Name == "Battery" then
+			table.insert(allBatteryObjects, obj)
+		end
 	end
 
-	-- Glow effect so they are easy to spot
-	local attachment = Instance.new("Attachment")
-	attachment.Parent = part
+	-- Also search recursively one level deeper (in case batteries are inside folders/models)
+	for _, folder in workspace:GetChildren() do
+		if folder:IsA("Folder") or folder:IsA("Model") then
+			for _, obj in folder:GetChildren() do
+				if obj.Name == "Battery" then
+					table.insert(allBatteryObjects, obj)
+				end
+			end
+		end
+	end
 
-	local light = Instance.new("PointLight")
-	light.Color = part.Color
-	light.Brightness = 2.0
-	light.Range = 8
-	light.Parent = attachment
+	-- Deduplicate (in case a Battery was found at both levels)
+	local seen = {}
+	local unique = {}
+	for _, obj in allBatteryObjects do
+		if not seen[obj] then
+			seen[obj] = true
+			table.insert(unique, obj)
+		end
+	end
+	allBatteryObjects = unique
 
-	return part
+	print("[ToyStory Objectives] Discovered", #allBatteryObjects, "Battery objects in workspace.")
 end
 
--- Helper to spawn visual Mrs. Potato Head base model programmatically
-local function createMrsPotatoHeadPart()
-	if activeRcCar and activeRcCar.Parent then
-		return activeRcCar
+--- Hides a battery (makes it invisible and non-interactable).
+local function hideBattery(battery)
+	if battery:IsA("BasePart") then
+		battery.Transparency = 1
+		battery.CanCollide = false
+		-- Hide any children (lights, particles, etc.)
+		for _, desc in battery:GetDescendants() do
+			if desc:IsA("BasePart") then
+				desc.Transparency = 1
+				desc.CanCollide = false
+			elseif desc:IsA("PointLight") or desc:IsA("SpotLight") or desc:IsA("SurfaceLight") then
+				desc.Enabled = false
+			elseif desc:IsA("ParticleEmitter") or desc:IsA("BillboardGui") then
+				desc.Enabled = false
+			elseif desc:IsA("Decal") or desc:IsA("Texture") then
+				desc.Transparency = 1
+			end
+		end
+	elseif battery:IsA("Model") then
+		for _, desc in battery:GetDescendants() do
+			if desc:IsA("BasePart") then
+				desc.Transparency = 1
+				desc.CanCollide = false
+			elseif desc:IsA("PointLight") or desc:IsA("SpotLight") or desc:IsA("SurfaceLight") then
+				desc.Enabled = false
+			elseif desc:IsA("ParticleEmitter") or desc:IsA("BillboardGui") then
+				desc.Enabled = false
+			elseif desc:IsA("Decal") or desc:IsA("Texture") then
+				desc.Transparency = 1
+			end
+		end
 	end
+end
 
-	local model = Instance.new("Model")
-	model.Name = "MrsPotatoHead"
+--- Shows a battery (restores visibility).
+local function showBattery(battery)
+	if battery:IsA("BasePart") then
+		battery.Transparency = 0
+		battery.CanCollide = true
+		for _, desc in battery:GetDescendants() do
+			if desc:IsA("BasePart") then
+				desc.Transparency = 0
+				desc.CanCollide = true
+			elseif desc:IsA("PointLight") or desc:IsA("SpotLight") or desc:IsA("SurfaceLight") then
+				desc.Enabled = true
+			elseif desc:IsA("ParticleEmitter") or desc:IsA("BillboardGui") then
+				desc.Enabled = true
+			elseif desc:IsA("Decal") or desc:IsA("Texture") then
+				desc.Transparency = 0
+			end
+		end
+	elseif battery:IsA("Model") then
+		for _, desc in battery:GetDescendants() do
+			if desc:IsA("BasePart") then
+				desc.Transparency = 0
+				desc.CanCollide = true
+			elseif desc:IsA("PointLight") or desc:IsA("SpotLight") or desc:IsA("SurfaceLight") then
+				desc.Enabled = true
+			elseif desc:IsA("ParticleEmitter") or desc:IsA("BillboardGui") then
+				desc.Enabled = true
+			elseif desc:IsA("Decal") or desc:IsA("Texture") then
+				desc.Transparency = 0
+			end
+		end
+	end
+end
 
-	-- Potato body
-	local body = Instance.new("Part")
-	body.Name = "Body"
-	body.Size = Vector3.new(3, 4, 3)
-	body.Position = RC_CAR_POSITION
-	body.Anchored = true
-	body.Material = Enum.Material.SmoothPlastic
-	body.Color = Color3.fromRGB(180, 130, 90) -- Potato brown
-	body.Parent = model
+--- Gets the part to attach a ProximityPrompt to.
+local function getPromptParent(battery): BasePart?
+	if battery:IsA("BasePart") then
+		return battery
+	elseif battery:IsA("Model") then
+		return battery.PrimaryPart or battery:FindFirstChildWhichIsA("BasePart")
+	end
+	return nil
+end
 
-	-- Red hat
-	local hat = Instance.new("Part")
-	hat.Name = "Hat"
-	hat.Size = Vector3.new(3.2, 0.6, 3.2)
-	hat.Position = RC_CAR_POSITION + Vector3.new(0, 2.1, 0)
-	hat.Anchored = true
-	hat.Material = Enum.Material.Plastic
-	hat.Color = Color3.fromRGB(231, 76, 60) -- Red
-	hat.Parent = model
-
-	model.Parent = workspace
-	activeRcCar = model
-	return model
+--- Shuffle an array in-place (Fisher-Yates).
+local function shuffle(arr)
+	local rng = Random.new()
+	for i = #arr, 2, -1 do
+		local j = rng:NextInteger(1, i)
+		arr[i], arr[j] = arr[j], arr[i]
+	end
 end
 
 function ObjectiveManager.InitializeObjectives()
 	ObjectiveManager.ClearObjectives()
 	batteriesVal.Value = 0
 
-	-- Create Mrs. Potato Head Base
-	local assemblyBase = createMrsPotatoHeadPart()
-	local body = assemblyBase:FindFirstChild("Body")
-	if body then
-		-- Prompt to assemble parts
-		local prompt = Instance.new("ProximityPrompt")
-		prompt.Name = "PotatoPrompt"
-		prompt.ObjectText = "Mrs. Potato Head"
-		prompt.ActionText = "Assemble Part"
-		prompt.HoldDuration = 1.5
-		prompt.MaxActivationDistance = 10
-		prompt.RequiresLineOfSight = false
-		prompt.Parent = body
+	-- Discover all Battery objects in workspace
+	discoverBatteries()
 
-		prompt.Triggered:Connect(function(player)
-			local char = player.Character
-			if char and char:GetAttribute("CarryingPart") == true then
-				-- Find part welded to player and destroy it
-				local carriedPart = char:FindFirstChild("CarriedPart")
-				if carriedPart then
-					carriedPart:Destroy()
-				end
-
-				char:SetAttribute("CarryingPart", false)
-				batteriesVal.Value = batteriesVal.Value + 1
-				print("[ToyStory Objectives] Part assembled by", player.Name, "- Total:", batteriesVal.Value)
-
-				-- Play insertion sound
-				local Utils = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Utils"))
-				Utils.PlayOneShot(body, "rbxassetid://9114226176", 0.8)
-
-				-- Check if completed
-				if batteriesVal.Value >= 3 then
-					local GameLoopManager = require(script.Parent.GameLoopManager)
-					GameLoopManager.EndGame("Toys")
-				end
-			end
-		end)
+	if #allBatteryObjects < BATTERIES_NEEDED then
+		warn("[ToyStory Objectives] Not enough Battery objects in workspace! Found:", #allBatteryObjects, "Need:", BATTERIES_NEEDED)
 	end
 
-	-- Spawn 5 Potato Head Parts
-	local rng = Random.new()
-	local spawnedCount = 0
+	-- Hide all batteries first
+	for _, battery in allBatteryObjects do
+		hideBattery(battery)
+	end
 
-	for i = 1, 15 do
-		if spawnedCount >= 5 then break end
+	-- Randomly pick 5 batteries to activate
+	local indices = {}
+	for i = 1, #allBatteryObjects do
+		table.insert(indices, i)
+	end
+	shuffle(indices)
 
-		local rx = rng:NextNumber(SPAWN_BOUNDS_X[1], SPAWN_BOUNDS_X[2])
-		local rz = rng:NextNumber(SPAWN_BOUNDS_Z[1], SPAWN_BOUNDS_Z[2])
+	local countToActivate = math.min(BATTERIES_NEEDED, #allBatteryObjects)
+	activeBatteries = {}
 
-		local rayOrigin = Vector3.new(rx, SPAWN_HEIGHT_START, rz)
-		local rayDirection = Vector3.new(0, -50, 0)
-		local raycastParams = RaycastParams.new()
+	for i = 1, countToActivate do
+		local battery = allBatteryObjects[indices[i]]
+		table.insert(activeBatteries, battery)
 
-		local result = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
-		if result and result.Instance and not result.Instance:FindFirstAncestor("MrsPotatoHead") then
-			local hitPos = result.Position
-			local part = createPotatoHeadPart(hitPos, spawnedCount + 1)
-			part.Parent = workspace
-			table.insert(spawnedBatteries, part)
-			spawnedCount = spawnedCount + 1
+		-- Show this battery
+		showBattery(battery)
 
-			-- Setup Pick Up Prompt
+		-- Create ProximityPrompt for collecting
+		local promptParent = getPromptParent(battery)
+		if promptParent then
 			local prompt = Instance.new("ProximityPrompt")
-			prompt.Name = "PickPrompt"
-			prompt.ObjectText = "Mrs. Potato Head's Part"
-			prompt.ActionText = "Pick Up"
+			prompt.Name = "BatteryPrompt"
+			prompt.ObjectText = "Battery"
+			prompt.ActionText = "Collect"
 			prompt.HoldDuration = 0.5
 			prompt.MaxActivationDistance = 8
 			prompt.RequiresLineOfSight = false
-			prompt.Parent = part
+			prompt.Parent = promptParent
 
-			prompt.Triggered:Connect(function(player)
+			batteryPrompts[battery] = prompt
+
+			local conn = prompt.Triggered:Connect(function(player)
 				local char = player.Character
-				if char and char:GetAttribute("IsCustomCharacter") then
-					local name = char:GetAttribute("CharacterName")
-					local isCaptured = char:GetAttribute("IsCaptured") or false
-					if name ~= "Sid" and not isCaptured and not char:GetAttribute("CarryingPart") then
-						-- Pick up part
-						char:SetAttribute("CarryingPart", true)
-						prompt:Destroy()
-						
-						-- Weld part to back of player
-						part.CanCollide = false
-						part.Anchored = false
-						part.Name = "CarriedPart"
-						
-						local torso = char:FindFirstChild("Torso")
-						if torso then
-							part.CFrame = torso.CFrame * CFrame.new(0, 0, 1.1) * CFrame.Angles(math.rad(90), 0, 0)
-							
-							local weld = Instance.new("WeldConstraint")
-							weld.Part0 = torso
-							weld.Part1 = part
-							weld.Parent = part
-							
-							part.Parent = char
-						else
-							part:Destroy()
-						end
+				if not char or not char:GetAttribute("IsCustomCharacter") then
+					return
+				end
 
-						-- Play pick up sound
-						local head = char:FindFirstChild("Head")
-						if head then
-							local Utils = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Utils"))
-							Utils.PlayOneShot(head, "rbxassetid://9114223126", 0.6)
-						end
-					end
+				local charName = char:GetAttribute("CharacterName")
+				local isCaptured = char:GetAttribute("IsCaptured") or false
+
+				-- Only non-Sid, non-captured toys can collect batteries
+				if charName == "Sid" or isCaptured then
+					return
+				end
+
+				-- Collect this battery
+				prompt:Destroy()
+				batteryPrompts[battery] = nil
+
+				if batteryConnections[battery] then
+					batteryConnections[battery]:Disconnect()
+					batteryConnections[battery] = nil
+				end
+
+				-- Hide the battery
+				hideBattery(battery)
+
+				-- Increment counter
+				batteriesVal.Value = batteriesVal.Value + 1
+				print("[ToyStory Objectives] Battery collected by", player.Name, "- Total:", batteriesVal.Value, "/", BATTERIES_NEEDED)
+
+				-- Play collect sound
+				local head = char:FindFirstChild("Head")
+				if head then
+					local Utils = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Utils"))
+					Utils.PlayOneShot(head, "rbxassetid://9114223126", 0.6)
+				end
+
+				-- Check if enough batteries collected
+				if batteriesVal.Value >= BATTERIES_NEEDED then
+					local GameLoopManager = require(script.Parent.GameLoopManager)
+					GameLoopManager.EndGame("Toys")
 				end
 			end)
+
+			batteryConnections[battery] = conn
 		end
 	end
-	
-	print("[ToyStory Objectives] Spawned", spawnedCount, "Mrs. Potato Head parts across the room.")
+
+	print("[ToyStory Objectives] Activated", countToActivate, "of", #allBatteryObjects, "batteries for this round.")
 end
 
 function ObjectiveManager.OpenEscapeZone()
@@ -255,7 +283,7 @@ function ObjectiveManager.OpenEscapeZone()
 				end
 
 				print("[ToyStory Objectives]", player.Name, "successfully escaped!")
-				
+
 				-- Destroy character (escaped!)
 				player.Character = nil
 				char:Destroy()
@@ -263,7 +291,7 @@ function ObjectiveManager.OpenEscapeZone()
 				-- Increment escaped count
 				local GameLoopManager = require(script.Parent.GameLoopManager)
 				GameLoopManager.ToysEscapedCount = GameLoopManager.ToysEscapedCount + 1
-				
+
 				-- If no toys left in play area, end match immediately
 				task.wait(1)
 				local aliveToys = 0
@@ -287,17 +315,27 @@ function ObjectiveManager.OpenEscapeZone()
 end
 
 function ObjectiveManager.ClearObjectives()
-	for _, bat in spawnedBatteries do
-		if bat and bat.Parent then
-			bat:Destroy()
+	-- Clean up prompts and connections
+	for battery, prompt in pairs(batteryPrompts) do
+		if prompt and prompt.Parent then
+			prompt:Destroy()
 		end
 	end
-	spawnedBatteries = {}
+	batteryPrompts = {}
 
-	if activeRcCar and activeRcCar.Parent then
-		activeRcCar:Destroy()
-		activeRcCar = nil
+	for battery, conn in pairs(batteryConnections) do
+		if conn then
+			conn:Disconnect()
+		end
 	end
+	batteryConnections = {}
+
+	-- Restore all batteries to visible state for next round
+	for _, battery in allBatteryObjects do
+		showBattery(battery)
+	end
+
+	activeBatteries = {}
 
 	if activeEscapeZone and activeEscapeZone.Parent then
 		activeEscapeZone:Destroy()
@@ -307,18 +345,6 @@ function ObjectiveManager.ClearObjectives()
 	if escapeTouchedConnection then
 		escapeTouchedConnection:Disconnect()
 		escapeTouchedConnection = nil
-	end
-
-	-- Clean up any carried part leftover on players
-	for _, player in Players:GetPlayers() do
-		local char = player.Character
-		if char then
-			char:SetAttribute("CarryingPart", false)
-			local carried = char:FindFirstChild("CarriedPart")
-			if carried then
-				carried:Destroy()
-			end
-		end
 	end
 end
 

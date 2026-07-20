@@ -172,6 +172,19 @@ function EventSetup.Init(eventsFolder: Folder, gameLoopManager: any, rescueManag
 	-- Pre-create the StunHunter event so it's ready for use
 	Utils.GetOrCreateRemoteEvent(eventsFolder, "StunHunter")
 
+	-- ForceStartRound (Developer only)
+	local forceStartEvent = Utils.GetOrCreateRemoteEvent(eventsFolder, "ForceStartRound")
+	forceStartEvent.OnServerEvent:Connect(function(player)
+		if player.Name == "Mir0bn" then
+			if gameLoopManager.Phase == "Lobby" then
+				print("[ToyStory EventSetup] Developer Mir0bn force-started the round.")
+				gameLoopManager.SetPhase("Prep")
+			end
+		else
+			warn("[ToyStory EventSetup] Unauthorized force start attempt by:", player.Name)
+		end
+	end)
+
 	print("[ToyStory EventSetup] All event handlers initialized!")
 end
 
