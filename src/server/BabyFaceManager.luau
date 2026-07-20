@@ -7,6 +7,7 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local PathfindingService = game:GetService("PathfindingService")
 local Utils = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Utils"))
 
 local BabyFaceManager = {}
@@ -32,6 +33,64 @@ local ROAM_RADIUS = 18
 -- ──────────────────────────────────────────────────────────
 -- Helpers
 -- ──────────────────────────────────────────────────────────
+
+local function checkLineOfSight(startPos: Vector3, targetPos: Vector3): boolean
+	if not activeBabyFace or not activeBabyFace.Parent then return true end
+	
+	local direction = targetPos - startPos
+	local raycastParams = RaycastParams.new()
+	raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+	
+	local excludeList = {activeBabyFace}
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p.Character then
+			table.insert(excludeList, p.Character)
+		end
+	end
+	local npcFolder = workspace:FindFirstChild("NPCs")
+	if npcFolder then
+		table.insert(excludeList, npcFolder)
+	end
+	raycastParams.FilterDescendantsInstances = excludeList
+
+	local result = workspace:Raycast(startPos, direction, raycastParams)
+	return result == nil
+end
+
+local function getPathWaypoint(startPos: Vector3, targetPos: Vector3): Vector3
+	-- If we have a clear line of sight, just walk straight!
+	if checkLineOfSight(startPos, targetPos) then
+		return targetPos
+	end
+
+	local path = PathfindingService:CreatePath({
+		AgentRadius = 3.5,
+		AgentHeight = 6,
+		AgentCanJump = false,
+	})
+	
+	local success, err = pcall(function()
+		path:ComputeAsync(startPos, targetPos)
+	end)
+	
+	if success and path.Status == Enum.PathStatus.Success then
+		local waypoints = path:GetWaypoints()
+		if #waypoints > 1 then
+			-- Find the first waypoint that is at least 3 studs away to avoid getting stuck
+			for i = 2, #waypoints do
+				local wp = waypoints[i]
+				local dist = (Vector3.new(startPos.X, 0, startPos.Z) - Vector3.new(wp.Position.X, 0, wp.Position.Z)).Magnitude
+				if dist > 3 then
+					return wp.Position
+				end
+			end
+			return waypoints[#waypoints].Position
+		end
+	end
+	
+	-- Fallback if pathfinding fails
+	return targetPos
+end
 
 local function getPhase()
 	local gs = ReplicatedStorage:FindFirstChild("GameState")
@@ -94,19 +153,21 @@ end
 local function moveTo(targetPos: Vector3)
 	if not activeBabyFace or not activeBabyFace.Parent then return end
 
+	local pivot = activeBabyFace:GetPivot()
+	local curPos = pivot.Position
+
+	local nextWp = getPathWaypoint(curPos, targetPos)
+
 	local humanoid = activeBabyFace:FindFirstChildOfClass("Humanoid")
 	if humanoid then
-		humanoid:MoveTo(targetPos)
+		humanoid:MoveTo(nextWp)
 		return
 	end
 
 	-- Non-humanoid: CFrame slide at fixed Y level
-	local pivot = activeBabyFace:GetPivot()
-	local curPos = pivot.Position
-
 	-- Horizontal direction only
-	local dx = targetPos.X - curPos.X
-	local dz = targetPos.Z - curPos.Z
+	local dx = nextWp.X - curPos.X
+	local dz = nextWp.Z - curPos.Z
 	local dist = math.sqrt(dx*dx + dz*dz)
 
 	if dist < 0.2 then return end
@@ -116,8 +177,20 @@ local function moveTo(targetPos: Vector3)
 	local nz = curPos.Z + (dz/dist) * step
 	local ny = fixedY or curPos.Y  -- Never change Y
 
-	-- Build new CFrame: position + face direction of travel (Y-axis rotation only)
-	local newCF = CFrame.new(nx, ny, nz) * CFrame.Angles(0, math.atan2(-dx, -dz), 0)
+	-- Build new CFrame: position + face direction of travel (Y-axis rotation only) with visual yaw offset
+	local yawOffsetDegrees = activeBabyFace:GetAttribute("YawOffset") or activeBabyFace:GetAttribute("yawOffset") or 0
+	local yawOffsetRad = math.rad(yawOffsetDegrees)
+	local travelYaw = math.atan2(-dx, -dz) + yawOffsetRad
+
+	-- Preserve original editor tilt (pitch/roll) so the model stays upright
+	local newCF
+	if originalCFrame then
+		local _, editorYaw, _ = originalCFrame:ToEulerAnglesYXZ()
+		local tiltOnly = CFrame.Angles(0, -editorYaw, 0) * originalCFrame.Rotation
+		newCF = CFrame.new(nx, ny, nz) * CFrame.Angles(0, travelYaw, 0) * tiltOnly
+	else
+		newCF = CFrame.new(nx, ny, nz) * CFrame.Angles(0, travelYaw, 0)
+	end
 	activeBabyFace:PivotTo(newCF)
 end
 
@@ -130,7 +203,30 @@ function BabyFaceManager.Spawn()
 
 	local babyFace = workspace:FindFirstChild("BabyFace") or workspace:FindFirstChild("babyface")
 	if not babyFace then
-		warn("[ToyStory BabyFaceManager] 'BabyFace' model not found in Workspace!")
+		babyFace = workspace:WaitForChild("BabyFace", 3) or workspace:WaitForChild("babyface", 3)
+	end
+
+	if not babyFace then
+		-- Search recursively (case-insensitive, whitespace-insensitive)
+		for _, desc in ipairs(workspace:GetDescendants()) do
+			if desc:IsA("Model") then
+				local cleanedName = desc.Name:lower():gsub("%s+", "")
+				if cleanedName == "babyface" or string.find(cleanedName, "babyface") then
+					babyFace = desc
+					break
+				end
+			end
+		end
+	end
+
+	if not babyFace then
+		local foundModels = {}
+		for _, desc in ipairs(workspace:GetDescendants()) do
+			if desc:IsA("Model") then
+				table.insert(foundModels, desc:GetFullName())
+			end
+		end
+		warn("[ToyStory BabyFaceManager] 'BabyFace' model not found in Workspace! Available models in Workspace: " .. table.concat(foundModels, ", "))
 		return
 	end
 
@@ -142,6 +238,21 @@ function BabyFaceManager.Spawn()
 
 	-- Determine root part
 	local root = babyFace.PrimaryPart or babyFace:FindFirstChild("HumanoidRootPart") or babyFace:FindFirstChildWhichIsA("BasePart")
+	if not root then
+		-- Search recursively for a nested root part
+		root = babyFace:FindFirstChild("Body", true)
+			or babyFace:FindFirstChild("BaseArmada", true)
+			or babyFace:FindFirstChild("HumanoidRootPart", true)
+		if not root then
+			for _, desc in ipairs(babyFace:GetDescendants()) do
+				if desc:IsA("BasePart") then
+					root = desc
+					break
+				end
+			end
+		end
+	end
+
 	if not root then
 		warn("[ToyStory BabyFaceManager] BabyFace has no root part!")
 		return
@@ -163,6 +274,18 @@ function BabyFaceManager.Spawn()
 			if hasHumanoid then
 				part.Anchored = false
 				part.CanCollide = (part == root)
+
+				-- Weld unanchored parts to the root to keep them from falling apart
+				if part ~= root then
+					local weld = root:FindFirstChild("Weld_" .. part.Name) or part:FindFirstChildWhichIsA("WeldConstraint")
+					if not weld then
+						weld = Instance.new("WeldConstraint")
+						weld.Name = "Weld_" .. part.Name
+						weld.Part0 = root
+						weld.Part1 = part
+						weld.Parent = root
+					end
+				end
 			else
 				part.Anchored = true  -- gravity is irrelevant; we move via CFrame
 				part.CanCollide = false
