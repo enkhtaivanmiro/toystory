@@ -9,13 +9,25 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local PhysicsService = game:GetService("PhysicsService")
 
 -- Setup Collision Groups safely
-pcall(function() PhysicsService:RegisterCollisionGroup("Hunters") end)
-pcall(function() PhysicsService:RegisterCollisionGroup("Toys") end)
-pcall(function() PhysicsService:RegisterCollisionGroup("CapturedToys") end)
+pcall(function()
+	PhysicsService:RegisterCollisionGroup("Hunters")
+end)
+pcall(function()
+	PhysicsService:RegisterCollisionGroup("Toys")
+end)
+pcall(function()
+	PhysicsService:RegisterCollisionGroup("CapturedToys")
+end)
 
-pcall(function() PhysicsService:CollisionGroupSetCollidable("Hunters", "CapturedToys", false) end)
-pcall(function() PhysicsService:CollisionGroupSetCollidable("Toys", "CapturedToys", false) end)
-pcall(function() PhysicsService:CollisionGroupSetCollidable("CapturedToys", "CapturedToys", false) end)
+pcall(function()
+	PhysicsService:CollisionGroupSetCollidable("Hunters", "CapturedToys", false)
+end)
+pcall(function()
+	PhysicsService:CollisionGroupSetCollidable("Toys", "CapturedToys", false)
+end)
+pcall(function()
+	PhysicsService:CollisionGroupSetCollidable("CapturedToys", "CapturedToys", false)
+end)
 
 -- Shared modules
 local Utils = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Utils"))
@@ -52,10 +64,12 @@ local swapping: { [Player]: boolean } = {}
 
 local function updateTakenAttributes()
 	local gameStateFolder = ReplicatedStorage:FindFirstChild("GameState")
-	if not gameStateFolder then return end
+	if not gameStateFolder then
+		return
+	end
 
 	-- Clear all taken attributes first
-	for _, toyName in ipairs({"Buzz", "Woody", "Slinky", "PotatoHead", "Rex"}) do
+	for _, toyName in ipairs({ "Buzz", "Woody", "Slinky", "PotatoHead", "Rex" }) do
 		gameStateFolder:SetAttribute("Taken_" .. toyName, nil)
 	end
 
@@ -159,7 +173,14 @@ local function swapCharacter(player: Player, currentCharacter: Model, characterN
 	end)
 
 	swapping[player] = nil
-	print("[ToyStory Server]", player.Name, "spawned as custom character:", characterName, "with height:", defaultHeight)
+	print(
+		"[ToyStory Server]",
+		player.Name,
+		"spawned as custom character:",
+		characterName,
+		"with height:",
+		defaultHeight
+	)
 end
 
 -- Listen to selection request
@@ -168,7 +189,12 @@ selectCharacterEvent.OnServerEvent:Connect(function(player, characterName)
 	if characterName ~= "Sid" then
 		for otherPlayer, selectedName in pairs(playerSelections) do
 			if otherPlayer ~= player and selectedName == characterName then
-				warn("[ToyStory Server] Character selection rejected: " .. characterName .. " is already taken by " .. otherPlayer.Name)
+				warn(
+					"[ToyStory Server] Character selection rejected: "
+						.. characterName
+						.. " is already taken by "
+						.. otherPlayer.Name
+				)
 				return
 			end
 		end

@@ -12,7 +12,10 @@ local LayDownController = {}
 
 -- State
 LayDownController.IsLayingDown = false
+LayDownController.IsOnCooldown = false
 LayDownController.selectedPose = 1 -- 1 = Face Down, 2 = Back Down, 3 = Left Side, 4 = Right Side
+
+local TOGGLE_COOLDOWN = 1.0 -- seconds between toggles
 
 -- Internal state
 local currentLayTransition = 0 -- 0 = standing, 1 = laying down
@@ -21,6 +24,7 @@ local originalRootC0 = nil
 -- Model geometry cached during Init
 local pivotToGround = 0
 local modelExtents = Vector3.new(1, 1, 1)
+local GROUND_HUG_OFFSET = 0.3 -- extra studs downward to compensate for AABB overestimation
 
 --- Initialize the lay-down controller with character geometry.
 function LayDownController.Init(character: Model, rootPart: BasePart)
@@ -77,16 +81,16 @@ function LayDownController.Toggle(character: Model, currentTrack: AnimationTrack
 
 		if LayDownController.selectedPose == 1 then
 			layDownRotation = CFrame.Angles(math.rad(90), 0, 0)
-			layDownOffsetHeight = -(pivotToGround - (modelExtents.Z / 2))
+			layDownOffsetHeight = -(pivotToGround - (modelExtents.Z / 2)) - GROUND_HUG_OFFSET
 		elseif LayDownController.selectedPose == 2 then
 			layDownRotation = CFrame.Angles(math.rad(-90), 0, 0)
-			layDownOffsetHeight = -(pivotToGround - (modelExtents.Z / 2))
+			layDownOffsetHeight = -(pivotToGround - (modelExtents.Z / 2)) - GROUND_HUG_OFFSET
 		elseif LayDownController.selectedPose == 3 then
 			layDownRotation = CFrame.Angles(0, 0, math.rad(90))
-			layDownOffsetHeight = -(pivotToGround - (modelExtents.X / 2))
+			layDownOffsetHeight = -(pivotToGround - (modelExtents.X / 2)) - GROUND_HUG_OFFSET
 		elseif LayDownController.selectedPose == 4 then
 			layDownRotation = CFrame.Angles(0, 0, math.rad(-90))
-			layDownOffsetHeight = -(pivotToGround - (modelExtents.X / 2))
+			layDownOffsetHeight = -(pivotToGround - (modelExtents.X / 2)) - GROUND_HUG_OFFSET
 		end
 
 		local layDownTranslation = CFrame.new(0, layDownOffsetHeight, 0)
@@ -100,6 +104,12 @@ function LayDownController.Toggle(character: Model, currentTrack: AnimationTrack
 	if setFreezeStateEvent then
 		setFreezeStateEvent:FireServer(LayDownController.IsLayingDown, targetC0)
 	end
+
+	-- Start cooldown to prevent spam-toggling
+	LayDownController.IsOnCooldown = true
+	task.delay(TOGGLE_COOLDOWN, function()
+		LayDownController.IsOnCooldown = false
+	end)
 
 	return LayDownController.IsLayingDown
 end
@@ -116,16 +126,16 @@ function LayDownController.UpdateFrame(): (CFrame, CFrame, number)
 
 	if LayDownController.selectedPose == 1 then
 		layDownRotation = CFrame.Angles(math.rad(90) * currentLayTransition, 0, 0)
-		layDownOffsetHeight = -(pivotToGround - (modelExtents.Z / 2)) * currentLayTransition
+		layDownOffsetHeight = (-(pivotToGround - (modelExtents.Z / 2)) - GROUND_HUG_OFFSET) * currentLayTransition
 	elseif LayDownController.selectedPose == 2 then
 		layDownRotation = CFrame.Angles(math.rad(-90) * currentLayTransition, 0, 0)
-		layDownOffsetHeight = -(pivotToGround - (modelExtents.Z / 2)) * currentLayTransition
+		layDownOffsetHeight = (-(pivotToGround - (modelExtents.Z / 2)) - GROUND_HUG_OFFSET) * currentLayTransition
 	elseif LayDownController.selectedPose == 3 then
 		layDownRotation = CFrame.Angles(0, 0, math.rad(90) * currentLayTransition)
-		layDownOffsetHeight = -(pivotToGround - (modelExtents.X / 2)) * currentLayTransition
+		layDownOffsetHeight = (-(pivotToGround - (modelExtents.X / 2)) - GROUND_HUG_OFFSET) * currentLayTransition
 	elseif LayDownController.selectedPose == 4 then
 		layDownRotation = CFrame.Angles(0, 0, math.rad(-90) * currentLayTransition)
-		layDownOffsetHeight = -(pivotToGround - (modelExtents.X / 2)) * currentLayTransition
+		layDownOffsetHeight = (-(pivotToGround - (modelExtents.X / 2)) - GROUND_HUG_OFFSET) * currentLayTransition
 	end
 
 	local layDownTranslation = CFrame.new(0, layDownOffsetHeight, 0)

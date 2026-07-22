@@ -146,11 +146,17 @@ function EventSetup.Init(eventsFolder: Folder, gameLoopManager: any, rescueManag
 			local root = char.PrimaryPart
 			local rootJoint = root and root:FindFirstChild("RootJoint")
 			if rootJoint and rootJoint:IsA("Motor6D") then
-				if targetC0 then
-					rootJoint.C0 = targetC0
-					print("[ToyStory EventSetup] Replicated lay-down C0 for", player.Name)
+				if typeof(targetC0) == "CFrame" then
+					local pos = targetC0.Position
+					-- Validate position offset is within reasonable bounds (<= 10 studs)
+					if math.abs(pos.X) <= 10 and math.abs(pos.Y) <= 10 and math.abs(pos.Z) <= 10 then
+						rootJoint.C0 = targetC0
+						print("[ToyStory EventSetup] Replicated lay-down C0 for", player.Name)
+					else
+						warn("[ToyStory EventSetup] Rejected out-of-bounds targetC0 from", player.Name)
+					end
 				else
-					warn("[ToyStory EventSetup] No targetC0 received for", player.Name)
+					warn("[ToyStory EventSetup] Invalid targetC0 type received for", player.Name)
 				end
 			else
 				warn("[ToyStory EventSetup] RootJoint NOT found on server for", player.Name)

@@ -160,7 +160,7 @@ local function updateSpeed()
 		humanoid.WalkSpeed = 0
 		humanoid.JumpPower = 0
 		humanoid.PlatformStand = true
-		
+
 		-- Disable all collisions while captured/carried to prevent weld glitches
 		for _, desc in character:GetDescendants() do
 			if desc:IsA("BasePart") then
@@ -173,12 +173,18 @@ local function updateSpeed()
 	if LayDownController.IsLayingDown then
 		humanoid.WalkSpeed = 0
 		humanoid.JumpPower = 0
-		humanoid.PlatformStand = true
 
-		-- Disable collisions on ALL parts while laying down to prevent physics
-		-- launching the character (especially important for large MeshParts like Rex)
+		-- Anchor the root part to freeze the character in place.
+		-- PlatformStand causes ragdoll physics which lets gravity pull
+		-- the rotated character through the floor. Anchoring prevents all movement.
+		if rootPart then
+			rootPart.Anchored = true
+		end
+
+		-- Disable collisions on limbs to prevent physics launching from
+		-- overlapping geometry (especially important for large MeshParts like Rex).
 		for _, desc in character:GetDescendants() do
-			if desc:IsA("BasePart") then
+			if desc:IsA("BasePart") and desc.Name ~= "HumanoidRootPart" then
 				desc.CanCollide = false
 			end
 		end
@@ -193,6 +199,11 @@ local function updateSpeed()
 		end
 		humanoid.JumpPower = defaultJumpPower
 		humanoid.PlatformStand = false
+
+		-- Unanchor when standing back up
+		if rootPart then
+			rootPart.Anchored = false
+		end
 
 		-- Restore standard R6 collision state when standing up
 		for _, desc in character:GetDescendants() do
@@ -240,13 +251,12 @@ end
 
 -- Initialize Sid combat controller
 if characterName == "Sid" then
-	SidCombatController.Init(
-		character, rootPart, humanoid, playerGui,
-		tracks, ANIM_WEIGHT,
-		function() return currentTrack, currentName end,
-		function(track, name) currentTrack = track; currentName = name end,
-		updateMovementState
-	)
+	SidCombatController.Init(character, rootPart, humanoid, playerGui, tracks, ANIM_WEIGHT, function()
+		return currentTrack, currentName
+	end, function(track, name)
+		currentTrack = track
+		currentName = name
+	end, updateMovementState)
 end
 
 -- Initialize proximity effects
@@ -284,6 +294,14 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		end
 		if FlightController.IsFlying then
 			return
+		end
+		-- Debounce: block toggle if cooldown is active
+		if LayDownController.IsOnCooldown then
+			return
+		end
+		-- Reset sprint when entering play-dead
+		if not LayDownController.IsLayingDown then
+			isSprinting = false
 		end
 		LayDownController.Toggle(character, currentTrack)
 		updateSpeed()
@@ -412,6 +430,10 @@ character:GetAttributeChangedSignal("IsCaptured"):Connect(function()
 		end
 	else
 		humanoid.PlatformStand = false
+		-- Ensure rootPart is unanchored when released from capture
+		if rootPart then
+			rootPart.Anchored = false
+		end
 	end
 	updateSpeed()
 end)

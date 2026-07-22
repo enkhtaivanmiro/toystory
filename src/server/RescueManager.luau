@@ -106,7 +106,7 @@ local function getPrisonPosition(index: number): CFrame
 	return CFrame.new(0, 3, 40)
 end
 
---- Gets a safe release position near the PrisonBox (outside it).
+--- Gets a safe release position right outside the PrisonBox entrance.
 local function getReleasePosition(): CFrame
 	if not prisonBox then
 		return CFrame.new(0, 1, 28)
@@ -120,8 +120,8 @@ local function getReleasePosition(): CFrame
 	end
 
 	if boxPart then
-		-- Teleport 12 studs in front of the box
-		return boxPart.CFrame * CFrame.new(0, 1, -12)
+		-- Place 3 studs directly in front of the box entrance
+		return boxPart.CFrame * CFrame.new(0, 1, -(boxPart.Size.Z / 2 + 3))
 	end
 
 	return CFrame.new(0, 1, 28)
@@ -343,6 +343,8 @@ function RescueManager.Release(player: Player)
 
 	print("[ToyStory RescueManager] Toy rescued:", player.Name)
 
+	local wasCarried = (carriedToys[player] ~= nil)
+
 	-- Remove from carried list if present
 	carriedToys[player] = nil
 	-- Disconnect manual carrying Heartbeat loop
@@ -370,8 +372,21 @@ function RescueManager.Release(player: Player)
 		humanoid.PlatformStand = false
 	end
 
-	-- Teleport outside PrisonBox
-	char:PivotTo(getReleasePosition())
+	-- Place toy: if rescued from Sid's hand, release in front of Sid; if in prison, step out of PrisonBox
+	if wasCarried then
+		for _, hunter in ipairs(Players:GetPlayers()) do
+			local hunterChar = hunter.Character
+			if hunterChar and hunterChar:GetAttribute("CharacterName") == "Sid" then
+				local sidRoot = hunterChar.PrimaryPart
+				if sidRoot then
+					char:PivotTo(sidRoot.CFrame * CFrame.new(0, 1, -8))
+					break
+				end
+			end
+		end
+	else
+		char:PivotTo(getReleasePosition())
+	end
 
 	-- Unanchor and restore network ownership to the client player
 	local root = char.PrimaryPart
@@ -485,11 +500,29 @@ function RescueManager.InitPrisonBox()
 		sidAttributeConnection = nil
 	end
 
-	-- Find the PrisonBox in workspace
-	prisonBox = workspace:FindFirstChild("PrisonBox")
+	-- Find the PrisonBox anywhere in workspace (recursively, e.g. inside Workspace.Model)
+	prisonBox = workspace:FindFirstChild("PrisonBox", true)
 	if not prisonBox then
-		warn("[ToyStory RescueManager] PrisonBox not found in workspace! Place a Part or Model named 'PrisonBox'.")
-		return
+		print("[ToyStory RescueManager] PrisonBox not found in workspace. Auto-creating default PrisonBox...")
+		local defaultBox = Instance.new("Part")
+		defaultBox.Name = "PrisonBox"
+		defaultBox.Size = Vector3.new(12, 6, 12)
+		defaultBox.Position = Vector3.new(0, 3, 35)
+		defaultBox.Anchored = true
+		defaultBox.CanCollide = false
+		defaultBox.Material = Enum.Material.Forcefield
+		defaultBox.Color = Color3.fromRGB(255, 60, 60)
+		defaultBox.Transparency = 0.6
+		defaultBox.Parent = workspace
+
+		local selectionBox = Instance.new("SelectionBox")
+		selectionBox.Name = "PrisonOutline"
+		selectionBox.Adornee = defaultBox
+		selectionBox.Color3 = Color3.fromRGB(255, 30, 30)
+		selectionBox.LineThickness = 0.15
+		selectionBox.Parent = defaultBox
+
+		prisonBox = defaultBox
 	end
 
 	-- Determine which part to attach prompts to
@@ -511,10 +544,10 @@ function RescueManager.InitPrisonBox()
 	depositPrompt.ObjectText = "Prison Box"
 	depositPrompt.ActionText = "Imprison Toy"
 	depositPrompt.HoldDuration = 3.0
-	depositPrompt.MaxActivationDistance = 12
+	depositPrompt.MaxActivationDistance = 18
 	depositPrompt.RequiresLineOfSight = false
 	depositPrompt.KeyboardKeyCode = Enum.KeyCode.E
-	depositPrompt.Enabled = false -- Starts disabled, enabled when Sid is carrying
+	depositPrompt.Enabled = true -- Enabled so prompt icon is always visible
 	depositPrompt.Parent = promptParent
 
 	depositPrompt.Triggered:Connect(function(player)
@@ -522,7 +555,9 @@ function RescueManager.InitPrisonBox()
 		if not char or char:GetAttribute("CharacterName") ~= "Sid" then
 			return
 		end
+
 		if char:GetAttribute("IsCarryingToy") ~= true then
+			print("[ToyStory RescueManager] Sid tried to deposit, but is not carrying a toy.")
 			return
 		end
 
@@ -538,16 +573,16 @@ function RescueManager.InitPrisonBox()
 		end
 	end)
 
-	-- === Rescue Prompt (Toys only, 5 second hold) ===
+	-- === Rescue Prompt (Toys only, 1.5 second hold) ===
 	rescuePrompt = Instance.new("ProximityPrompt")
 	rescuePrompt.Name = "PrisonRescuePrompt"
 	rescuePrompt.ObjectText = "Prison Box"
 	rescuePrompt.ActionText = "Free Teammate"
-	rescuePrompt.HoldDuration = 5.0
-	rescuePrompt.MaxActivationDistance = 12
+	rescuePrompt.HoldDuration = 1.5
+	rescuePrompt.MaxActivationDistance = 18
 	rescuePrompt.RequiresLineOfSight = false
 	rescuePrompt.KeyboardKeyCode = Enum.KeyCode.E
-	rescuePrompt.Enabled = false -- Starts disabled, enabled when toys are imprisoned
+	rescuePrompt.Enabled = true -- Enabled so prompt icon is always visible
 	rescuePrompt.Parent = promptParent
 
 	rescuePrompt.Triggered:Connect(function(rescuingPlayer)
@@ -561,6 +596,11 @@ function RescueManager.InitPrisonBox()
 
 		-- Only non-Sid, non-captured toys can rescue
 		if charName == "Sid" or isCaptured then
+			return
+		end
+
+		if #prisonedToys == 0 then
+			print("[ToyStory RescueManager] Toy tried to rescue, but no teammates are in prison.")
 			return
 		end
 

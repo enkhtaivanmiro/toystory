@@ -207,8 +207,10 @@ function CharacterRigger.Build(template: Model, characterName: string, targetHei
 			scaleModel(character, scaleFactor)
 		end
 
-		local legHeight = targetHeight * 0.4
-		createHumanoid(character, legHeight + 0.2)
+		local rootPos = existingRoot.Position.Y
+		local feetDistance = rootPos - minY
+		local exactHipHeight = feetDistance - (existingRoot.Size.Y / 2)
+		createHumanoid(character, math.max(0.5, exactHipHeight))
 		character.PrimaryPart = existingRoot
 		character:SetAttribute("IsCustomCharacter", true)
 		character:SetAttribute("CharacterName", characterName)
@@ -334,8 +336,8 @@ function CharacterRigger.Build(template: Model, characterName: string, targetHei
 		torso)
 
 	-- 11. Create the Humanoid
-	local legHeight = 2.0 * scale
-	createHumanoid(character, legHeight + 0.2)
+	local exactHipHeight = 2.0 * scale
+	createHumanoid(character, exactHipHeight)
 	character.PrimaryPart = rootPart
 
 	-- 12. Handle wing accessory (Buzz only)
