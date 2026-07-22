@@ -106,10 +106,10 @@ local function getPrisonPosition(index: number): CFrame
 	return CFrame.new(0, 3, 40)
 end
 
---- Gets a safe release position right outside the PrisonBox entrance.
+--- Gets a safe release position right outside the PrisonBox entrance (on the opposite side to avoid the window).
 local function getReleasePosition(): CFrame
 	if not prisonBox then
-		return CFrame.new(0, 1, 28)
+		return CFrame.new(0, 1, 44) * CFrame.Angles(0, math.pi, 0)
 	end
 
 	local boxPart = nil
@@ -120,11 +120,11 @@ local function getReleasePosition(): CFrame
 	end
 
 	if boxPart then
-		-- Place 3 studs directly in front of the box entrance
-		return boxPart.CFrame * CFrame.new(0, 1, -(boxPart.Size.Z / 2 + 3))
+		-- Place 3 studs on the opposite side of the box and face away from it
+		return boxPart.CFrame * CFrame.new(0, 1, boxPart.Size.Z / 2 + 3) * CFrame.Angles(0, math.pi, 0)
 	end
 
-	return CFrame.new(0, 1, 28)
+	return CFrame.new(0, 1, 44) * CFrame.Angles(0, math.pi, 0)
 end
 
 --- Deposits a carried toy into the PrisonBox.
@@ -538,17 +538,38 @@ function RescueManager.InitPrisonBox()
 		return
 	end
 
+	-- Clean up old attachments if they exist (to prevent duplicates on re-init)
+	local oldDepositAttachment = promptParent:FindFirstChild("DepositPromptAttachment")
+	if oldDepositAttachment then
+		oldDepositAttachment:Destroy()
+	end
+	local oldRescueAttachment = promptParent:FindFirstChild("RescuePromptAttachment")
+	if oldRescueAttachment then
+		oldRescueAttachment:Destroy()
+	end
+
+	-- Create attachments to position prompts nicely on the box instead of buried in the center
+	local depositAttachment = Instance.new("Attachment")
+	depositAttachment.Name = "DepositPromptAttachment"
+	depositAttachment.Position = Vector3.new(0, promptParent.Size.Y / 2 + 1, 0) -- Top surface of the box
+	depositAttachment.Parent = promptParent
+
+	local rescueAttachment = Instance.new("Attachment")
+	rescueAttachment.Name = "RescuePromptAttachment"
+	rescueAttachment.Position = Vector3.new(0, -promptParent.Size.Y / 2 + 1.5, promptParent.Size.Z / 2 + 0.5) -- Opposite face of the box (away from the window)
+	rescueAttachment.Parent = promptParent
+
 	-- === Deposit Prompt (Sid only, 3 second hold) ===
 	depositPrompt = Instance.new("ProximityPrompt")
 	depositPrompt.Name = "PrisonDepositPrompt"
 	depositPrompt.ObjectText = "Prison Box"
 	depositPrompt.ActionText = "Imprison Toy"
 	depositPrompt.HoldDuration = 3.0
-	depositPrompt.MaxActivationDistance = 18
+	depositPrompt.MaxActivationDistance = 25
 	depositPrompt.RequiresLineOfSight = false
 	depositPrompt.KeyboardKeyCode = Enum.KeyCode.E
 	depositPrompt.Enabled = true -- Enabled so prompt icon is always visible
-	depositPrompt.Parent = promptParent
+	depositPrompt.Parent = depositAttachment
 
 	depositPrompt.Triggered:Connect(function(player)
 		local char = player.Character
@@ -583,7 +604,7 @@ function RescueManager.InitPrisonBox()
 	rescuePrompt.RequiresLineOfSight = false
 	rescuePrompt.KeyboardKeyCode = Enum.KeyCode.E
 	rescuePrompt.Enabled = true -- Enabled so prompt icon is always visible
-	rescuePrompt.Parent = promptParent
+	rescuePrompt.Parent = rescueAttachment
 
 	rescuePrompt.Triggered:Connect(function(rescuingPlayer)
 		local rescuerChar = rescuingPlayer.Character
@@ -705,7 +726,22 @@ function RescueManager.Reset()
 	carryingConnections = {}
 	prisonedToys = {}
 
-	-- Clean up PrisonBox prompts
+	-- Clean up PrisonBox prompts and attachments
+	if prisonBox then
+		local boxPart = nil
+		if prisonBox:IsA("Model") then
+			boxPart = prisonBox.PrimaryPart or prisonBox:FindFirstChildWhichIsA("BasePart")
+		elseif prisonBox:IsA("BasePart") then
+			boxPart = prisonBox
+		end
+		if boxPart then
+			local depositAtt = boxPart:FindFirstChild("DepositPromptAttachment")
+			if depositAtt then depositAtt:Destroy() end
+			local rescueAtt = boxPart:FindFirstChild("RescuePromptAttachment")
+			if rescueAtt then rescueAtt:Destroy() end
+		end
+	end
+
 	if depositPrompt then
 		depositPrompt:Destroy()
 		depositPrompt = nil
