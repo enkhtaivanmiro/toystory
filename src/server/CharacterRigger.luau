@@ -210,6 +210,7 @@ function CharacterRigger.Build(template: Model, characterName: string, targetHei
 		local rootPos = existingRoot.Position.Y
 		local feetDistance = rootPos - minY
 		local exactHipHeight = feetDistance - (existingRoot.Size.Y / 2)
+
 		createHumanoid(character, math.max(0.5, exactHipHeight))
 		character.PrimaryPart = existingRoot
 		character:SetAttribute("IsCustomCharacter", true)
@@ -336,7 +337,7 @@ function CharacterRigger.Build(template: Model, characterName: string, targetHei
 		torso)
 
 	-- 11. Create the Humanoid
-	local exactHipHeight = 2.0 * scale
+	local exactHipHeight = (characterName == "Sid" and 1.0 or 2.0) * scale
 	createHumanoid(character, exactHipHeight)
 	character.PrimaryPart = rootPart
 
