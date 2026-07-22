@@ -385,17 +385,25 @@ if gameEndedEvent then
 	end)
 end
 
--- Hide Rescue teammates prompt if the local player is Sid or currently captured themselves
+-- Hide prompts based on role/status:
+-- 1. Hide Rescue prompts (RescuePrompt / PrisonRescuePrompt) from Sid or captured teammates
+-- 2. Hide Deposit prompt (PrisonDepositPrompt) from toys (non-Sid characters)
 ProximityPromptService.PromptShown:Connect(function(prompt)
-	if prompt.Name == "RescuePrompt" then
-		local char = localPlayer.Character
-		if char then
-			local charName = char:GetAttribute("CharacterName")
-			local isCaptured = char:GetAttribute("IsCaptured") or false
-			if charName == "Sid" or isCaptured then
-				prompt.Enabled = false
-			end
-		else
+	local char = localPlayer.Character
+	if not char then
+		prompt.Enabled = false
+		return
+	end
+
+	local charName = char:GetAttribute("CharacterName")
+	local isCaptured = char:GetAttribute("IsCaptured") or false
+
+	if prompt.Name == "RescuePrompt" or prompt.Name == "PrisonRescuePrompt" then
+		if charName == "Sid" or isCaptured then
+			prompt.Enabled = false
+		end
+	elseif prompt.Name == "PrisonDepositPrompt" then
+		if charName ~= "Sid" then
 			prompt.Enabled = false
 		end
 	end

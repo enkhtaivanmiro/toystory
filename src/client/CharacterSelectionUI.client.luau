@@ -144,7 +144,6 @@ local function createCharacterButton(name: string)
 	})
 
 	local function updateButtonState()
-		if name == "Sid" then return end
 		local takenBy = gameStateFolder:GetAttribute("Taken_" .. name)
 		if takenBy and takenBy ~= player.Name then
 			button.BackgroundColor3 = Color3.fromRGB(24, 24, 32)
@@ -171,28 +170,22 @@ local function createCharacterButton(name: string)
 	end)
 
 	button.MouseEnter:Connect(function()
-		if name ~= "Sid" then
-			local takenBy = gameStateFolder:GetAttribute("Taken_" .. name)
-			if takenBy and takenBy ~= player.Name then return end
-		end
+		local takenBy = gameStateFolder:GetAttribute("Taken_" .. name)
+		if takenBy and takenBy ~= player.Name then return end
 		hoverTween:Play()
 		TweenService:Create(buttonStroke, TweenInfo.new(0.2), { Color = Color3.fromRGB(120, 120, 160) }):Play()
 	end)
 
 	button.MouseLeave:Connect(function()
-		if name ~= "Sid" then
-			local takenBy = gameStateFolder:GetAttribute("Taken_" .. name)
-			if takenBy and takenBy ~= player.Name then return end
-		end
+		local takenBy = gameStateFolder:GetAttribute("Taken_" .. name)
+		if takenBy and takenBy ~= player.Name then return end
 		normalTween:Play()
 		TweenService:Create(buttonStroke, TweenInfo.new(0.2), { Color = Color3.fromRGB(60, 60, 80) }):Play()
 	end)
 
 	button.MouseButton1Click:Connect(function()
-		if name ~= "Sid" then
-			local takenBy = gameStateFolder:GetAttribute("Taken_" .. name)
-			if takenBy and takenBy ~= player.Name then return end
-		end
+		local takenBy = gameStateFolder:GetAttribute("Taken_" .. name)
+		if takenBy and takenBy ~= player.Name then return end
 
 		-- Play click flash effect
 		button.BackgroundColor3 = Color3.fromRGB(80, 80, 110)

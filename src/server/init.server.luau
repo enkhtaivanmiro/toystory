@@ -68,16 +68,14 @@ local function updateTakenAttributes()
 		return
 	end
 
-	-- Clear all taken attributes first
-	for _, toyName in ipairs({ "Buzz", "Woody", "Slinky", "PotatoHead", "Rex" }) do
+	-- Clear all taken attributes first (including Sid)
+	for _, toyName in ipairs({ "Buzz", "Woody", "Slinky", "PotatoHead", "Rex", "Sid" }) do
 		gameStateFolder:SetAttribute("Taken_" .. toyName, nil)
 	end
 
 	-- Set taken attributes based on current player selections
 	for player, characterName in pairs(playerSelections) do
-		if characterName ~= "Sid" then
-			gameStateFolder:SetAttribute("Taken_" .. characterName, player.Name)
-		end
+		gameStateFolder:SetAttribute("Taken_" .. characterName, player.Name)
 	end
 end
 
@@ -185,18 +183,16 @@ end
 
 -- Listen to selection request
 selectCharacterEvent.OnServerEvent:Connect(function(player, characterName)
-	-- If it's a toy character, check if it is already taken by another player
-	if characterName ~= "Sid" then
-		for otherPlayer, selectedName in pairs(playerSelections) do
-			if otherPlayer ~= player and selectedName == characterName then
-				warn(
-					"[ToyStory Server] Character selection rejected: "
-						.. characterName
-						.. " is already taken by "
-						.. otherPlayer.Name
-				)
-				return
-			end
+	-- Check if the character (toy or Sid) is already taken by another player
+	for otherPlayer, selectedName in pairs(playerSelections) do
+		if otherPlayer ~= player and selectedName == characterName then
+			warn(
+				"[ToyStory Server] Character selection rejected: "
+					.. characterName
+					.. " is already taken by "
+					.. otherPlayer.Name
+			)
+			return
 		end
 	end
 
