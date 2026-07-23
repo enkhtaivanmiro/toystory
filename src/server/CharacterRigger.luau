@@ -337,7 +337,7 @@ function CharacterRigger.Build(template: Model, characterName: string, targetHei
 		torso)
 
 	-- 11. Create the Humanoid
-	local exactHipHeight = (characterName == "Sid" and 1.0 or 2.0) * scale
+	local exactHipHeight = (characterName == "Sid" and 0.2 or 2.0) * scale
 	createHumanoid(character, exactHipHeight)
 	character.PrimaryPart = rootPart
 
