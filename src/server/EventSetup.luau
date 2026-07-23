@@ -137,6 +137,14 @@ function EventSetup.Init(eventsFolder: Folder, gameLoopManager: any, rescueManag
 	setFreezeStateEvent.OnServerEvent:Connect(function(player, isFrozen, targetC0)
 		local char = player.Character
 		if char and char:GetAttribute("IsCustomCharacter") then
+			if isFrozen then
+				local VisibilityCheck = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("VisibilityCheck"))
+				if VisibilityCheck.CanAnySidSeeToy(char) then
+					warn("[ToyStory EventSetup] Rejected SetFreezeState from " .. player.Name .. " - Sid has line of sight.")
+					return
+				end
+			end
+
 			char:SetAttribute("IsLayingDown", isFrozen)
 			local humanoid = char:FindFirstChildOfClass("Humanoid")
 			if humanoid then
