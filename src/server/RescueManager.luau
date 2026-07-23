@@ -577,6 +577,13 @@ function RescueManager.InitPrisonBox()
 			return
 		end
 
+		-- Reject deposits during the Prep phase
+		local gameState = ReplicatedStorage:FindFirstChild("GameState")
+		local matchPhase = gameState and gameState:FindFirstChild("MatchPhase")
+		if matchPhase and matchPhase.Value == "Prep" then
+			return
+		end
+
 		if char:GetAttribute("IsCarryingToy") ~= true then
 			print("[ToyStory RescueManager] Sid tried to deposit, but is not carrying a toy.")
 			return
@@ -753,6 +760,151 @@ function RescueManager.Reset()
 	if sidAttributeConnection then
 		sidAttributeConnection:Disconnect()
 		sidAttributeConnection = nil
+	end
+end
+
+function RescueManager.IsCaptured(player: Player): boolean
+	if carriedToys[player] then
+		return true
+	end
+	for _, entry in ipairs(prisonedToys) do
+		if entry.player == player then
+			return true
+		end
+	end
+	return false
+end
+
+function RescueManager.HandleCharacterAdded(player: Player, newCharacter: Model)
+	-- 1. Check if they were in prison
+	local foundInPrisonIndex = nil
+	for i, entry in ipairs(prisonedToys) do
+		if entry.player == player then
+			foundInPrisonIndex = i
+			break
+		end
+	end
+
+	if foundInPrisonIndex then
+		print("[ToyStory RescueManager] Re-imprisoning respawned player:", player.Name)
+		prisonedToys[foundInPrisonIndex].character = newCharacter
+		newCharacter:SetAttribute("IsCaptured", true)
+		newCharacter:SetAttribute("IsPrisoned", true)
+
+		local root = newCharacter.PrimaryPart or newCharacter:WaitForChild("HumanoidRootPart", 5)
+		if root then
+			root.Anchored = true
+		end
+
+		restoreCharPhysics(newCharacter, "Toys")
+		newCharacter:PivotTo(getPrisonPosition(foundInPrisonIndex))
+		return
+	end
+
+	-- 2. Check if they were carried by Sid
+	if carriedToys[player] then
+		print("[ToyStory RescueManager] Re-carrying respawned player:", player.Name)
+		carriedToys[player] = newCharacter
+		newCharacter:SetAttribute("IsCaptured", true)
+		newCharacter:SetAttribute("IsCarried", true)
+
+		-- Find Sid
+		local sidCharacter = nil
+		for _, p in ipairs(Players:GetPlayers()) do
+			local c = p.Character
+			if c and c:GetAttribute("CharacterName") == "Sid" then
+				sidCharacter = c
+				break
+			end
+		end
+
+		if sidCharacter then
+			-- Anchor root part
+			local root = newCharacter.PrimaryPart or newCharacter:WaitForChild("HumanoidRootPart", 5)
+			if root then
+				root.Anchored = true
+			end
+
+			-- Platform stand
+			local humanoid = newCharacter:FindFirstChildOfClass("Humanoid")
+			if humanoid then
+				humanoid.PlatformStand = true
+			end
+
+			-- Captured physics
+			for _, part in newCharacter:GetDescendants() do
+				if part:IsA("BasePart") then
+					part.CanCollide = false
+					part.CollisionGroup = "CapturedToys"
+					part.Massless = true
+				end
+			end
+
+			-- Update position immediately
+			local rightArm = sidCharacter:FindFirstChild("Right Arm")
+			if rightArm and rightArm:IsA("BasePart") then
+				local sidScale = 31 / 5
+				newCharacter:PivotTo(rightArm.CFrame * CFrame.new(0, -1.2 * sidScale, 0) * CFrame.Angles(math.rad(-90), 0, 0))
+			end
+
+			-- Disconnect old heartbeat
+			local oldConn = carryingConnections[player]
+			if oldConn then
+				oldConn:Disconnect()
+			end
+
+			-- Start new heartbeat
+			local heartbeatConn = RunService.Heartbeat:Connect(function()
+				if not newCharacter.Parent or not sidCharacter.Parent then
+					return
+				end
+				if newCharacter:GetAttribute("IsCaptured") == true and newCharacter:GetAttribute("IsCarried") == true then
+					local rArm = sidCharacter:FindFirstChild("Right Arm")
+					if rArm then
+						local sidScale = 31 / 5
+						newCharacter:PivotTo(rArm.CFrame * CFrame.new(0, -1.2 * sidScale, 0) * CFrame.Angles(math.rad(-90), 0, 0))
+					end
+				end
+			end)
+			carryingConnections[player] = heartbeatConn
+
+			-- Re-create Rescue ProximityPrompt on Torso
+			local torso = newCharacter:FindFirstChild("Torso") or newCharacter:WaitForChild("Torso", 5)
+			if torso then
+				if rescuePrompts[player] then
+					pcall(function() rescuePrompts[player]:Destroy() end)
+				end
+				if captureConnections[player] then
+					pcall(function() captureConnections[player]:Disconnect() end)
+				end
+
+				local prompt = Instance.new("ProximityPrompt")
+				prompt.Name = "RescuePrompt"
+				prompt.ObjectText = player.Name
+				prompt.ActionText = "Rescue Teammate"
+				prompt.HoldDuration = 3.0
+				prompt.MaxActivationDistance = 8
+				prompt.RequiresLineOfSight = false
+				prompt.Parent = torso
+
+				rescuePrompts[player] = prompt
+
+				local conn = prompt.Triggered:Connect(function(rescuingPlayer)
+					local rescuerChar = rescuingPlayer.Character
+					if rescuerChar and rescuerChar:GetAttribute("IsCustomCharacter") then
+						local name = rescuerChar:GetAttribute("CharacterName")
+						local isCaptured = rescuerChar:GetAttribute("IsCaptured") or false
+						if name ~= "Sid" and not isCaptured then
+							RescueManager.Release(player)
+						end
+					end
+				end)
+				captureConnections[player] = conn
+			end
+		else
+			-- If Sid wasn't found, just drop them
+			RescueManager.Release(player)
+		end
 	end
 end
 

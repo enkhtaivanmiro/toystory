@@ -306,6 +306,40 @@ local function onCharacterAdded(char)
 		updateObjectiveText()
 	end)
 
+	local function updateResetButton()
+		local charName = char:GetAttribute("CharacterName")
+		if charName and charName ~= "Sid" then
+			local isCaptured = char:GetAttribute("IsCaptured") or false
+			task.spawn(function()
+				local success = false
+				local tries = 0
+				while not success and tries < 50 do
+					tries = tries + 1
+					success = pcall(function()
+						game:GetService("StarterGui"):SetCore("ResetButtonCallback", not isCaptured)
+					end)
+					if not success then
+						task.wait(0.2)
+					end
+				end
+			end)
+		else
+			task.spawn(function()
+				local success = false
+				local tries = 0
+				while not success and tries < 50 do
+					tries = tries + 1
+					success = pcall(function()
+						game:GetService("StarterGui"):SetCore("ResetButtonCallback", true)
+					end)
+					if not success then
+						task.wait(0.2)
+					end
+				end
+			end)
+		end
+	end
+
 	-- Handle captured overlay visibility dynamically
 	char:GetAttributeChangedSignal("IsCaptured"):Connect(function()
 		local charName = char:GetAttribute("CharacterName")
@@ -319,10 +353,12 @@ local function onCharacterAdded(char)
 		else
 			capturedFrame.Visible = false
 		end
+		updateResetButton()
 	end)
 
 	-- Run initially (if character attributes are already replicated)
 	updateObjectiveText()
+	updateResetButton()
 	local charName = char:GetAttribute("CharacterName")
 	if charName and charName ~= "Sid" then
 		capturedFrame.Visible = char:GetAttribute("IsCaptured") or false

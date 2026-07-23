@@ -162,6 +162,11 @@ local function swapCharacter(player: Player, currentCharacter: Model, characterN
 		end
 	end
 
+	-- Re-apply capture/prison state if the toy was captured before respawning
+	if RescueManager.HandleCharacterAdded then
+		RescueManager.HandleCharacterAdded(player, customCharacter)
+	end
+
 	-- Enable Animate script
 	task.defer(function()
 		local animScript = customCharacter:FindFirstChild("Animate")
@@ -183,6 +188,12 @@ end
 
 -- Listen to selection request
 selectCharacterEvent.OnServerEvent:Connect(function(player, characterName)
+	-- If player is currently captured, reject character selection/swapping
+	if RescueManager.IsCaptured(player) then
+		warn("[ToyStory Server] Character selection rejected: player is captured.")
+		return
+	end
+
 	-- Check if the character (toy or Sid) is already taken by another player
 	for otherPlayer, selectedName in pairs(playerSelections) do
 		if otherPlayer ~= player and selectedName == characterName then

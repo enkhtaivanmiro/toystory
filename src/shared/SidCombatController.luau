@@ -108,6 +108,13 @@ function SidCombatController.Init(
 		end
 
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			-- Don't allow combat inputs during preparation phase
+			local gameState = ReplicatedStorage:FindFirstChild("GameState")
+			local matchPhase = gameState and gameState:FindFirstChild("MatchPhase")
+			if matchPhase and matchPhase.Value == "Prep" then
+				return
+			end
+
 			-- If Sid is already carrying a toy, pressing Mouse 1 drops them instead of attacking
 			if character:GetAttribute("IsCarryingToy") == true then
 				local dropToyEvent = eventsFolder:FindFirstChild("DropToy")

@@ -80,6 +80,11 @@ function EventSetup.Init(eventsFolder: Folder, gameLoopManager: any, rescueManag
 			return
 		end
 
+		-- Reject capture requests during the Prep phase
+		if gameLoopManager.Phase == "Prep" then
+			return
+		end
+
 		-- If Sid is already carrying a toy in his hand, reject the capture request
 		if char:GetAttribute("IsCarryingToy") == true then
 			return
