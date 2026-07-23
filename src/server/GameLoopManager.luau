@@ -146,6 +146,10 @@ function GameLoopManager.SetPhase(newPhase: string)
 	elseif newPhase == "Search" then
 		-- Release Hunter
 		lockHunter(false)
+		-- Activate batteries (they were prepared during Prep but kept hidden)
+		if ObjectiveManager then
+			ObjectiveManager.ActivateObjectives()
+		end
 		-- Set timer to 300 seconds (5 mins)
 		GameLoopManager.TimeRemaining = 300
 	elseif newPhase == "Escape" then

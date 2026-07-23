@@ -147,6 +147,8 @@ local function shuffle(arr)
 	end
 end
 
+--- Prepare objectives for the round: discover batteries, pick which ones to use,
+--- but keep them all hidden. Call ActivateObjectives() later to reveal them.
 function ObjectiveManager.InitializeObjectives()
 	ObjectiveManager.ClearObjectives()
 	batteriesVal.Value = 0
@@ -163,7 +165,7 @@ function ObjectiveManager.InitializeObjectives()
 		hideBattery(battery)
 	end
 
-	-- Randomly pick 5 batteries to activate
+	-- Randomly pick 5 batteries to activate later
 	local indices = {}
 	for i = 1, #allBatteryObjects do
 		table.insert(indices, i)
@@ -176,7 +178,15 @@ function ObjectiveManager.InitializeObjectives()
 	for i = 1, countToActivate do
 		local battery = allBatteryObjects[indices[i]]
 		table.insert(activeBatteries, battery)
+	end
 
+	print("[ToyStory Objectives] Prepared", countToActivate, "of", #allBatteryObjects, "batteries for this round (hidden until Search phase).")
+end
+
+--- Activate the prepared batteries: make them visible and add collection prompts.
+--- Called when the Search phase begins.
+function ObjectiveManager.ActivateObjectives()
+	for _, battery in activeBatteries do
 		-- Show this battery
 		showBattery(battery)
 
@@ -241,7 +251,7 @@ function ObjectiveManager.InitializeObjectives()
 		end
 	end
 
-	print("[ToyStory Objectives] Activated", countToActivate, "of", #allBatteryObjects, "batteries for this round.")
+	print("[ToyStory Objectives] Activated", #activeBatteries, "batteries (now visible and collectible).")
 end
 
 function ObjectiveManager.OpenEscapeZone()
