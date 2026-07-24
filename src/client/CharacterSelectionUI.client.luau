@@ -11,6 +11,17 @@ local TweenService = game:GetService("TweenService")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
+-- Guard: Don't recreate the UI if the player has already selected a character (e.g. on respawn)
+if player:GetAttribute("HasSelectedCharacter") then
+	return
+end
+
+-- Guard: Destroy any pre-existing duplicate CharacterSelectionGui before creating a new one
+local existingGui = playerGui:FindFirstChild("CharacterSelectionGui")
+if existingGui then
+	existingGui:Destroy()
+end
+
 -- Configuration
 local CharacterConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("CharacterConfig"))
 local eventsFolder = ReplicatedStorage:WaitForChild("Events")
@@ -136,14 +147,17 @@ local function createCharacterButton(name: string)
 	-- Hover/Click Animations
 	local hoverTween = TweenService:Create(button, TweenInfo.new(0.2), {
 		BackgroundColor3 = Color3.fromRGB(50, 50, 70),
-		TextColor3 = Color3.fromRGB(255, 255, 255)
+		TextColor3 = Color3.fromRGB(255, 255, 255),
 	})
 	local normalTween = TweenService:Create(button, TweenInfo.new(0.2), {
 		BackgroundColor3 = Color3.fromRGB(36, 36, 48),
-		TextColor3 = Color3.fromRGB(240, 240, 240)
+		TextColor3 = Color3.fromRGB(240, 240, 240),
 	})
 
 	local function updateButtonState()
+		if name == "Sid" then
+			return
+		end
 		local takenBy = gameStateFolder:GetAttribute("Taken_" .. name)
 		if takenBy and takenBy ~= player.Name then
 			button.BackgroundColor3 = Color3.fromRGB(24, 24, 32)
@@ -170,34 +184,49 @@ local function createCharacterButton(name: string)
 	end)
 
 	button.MouseEnter:Connect(function()
-		local takenBy = gameStateFolder:GetAttribute("Taken_" .. name)
-		if takenBy and takenBy ~= player.Name then return end
+		if name ~= "Sid" then
+			local takenBy = gameStateFolder:GetAttribute("Taken_" .. name)
+			if takenBy and takenBy ~= player.Name then
+				return
+			end
+		end
 		hoverTween:Play()
 		TweenService:Create(buttonStroke, TweenInfo.new(0.2), { Color = Color3.fromRGB(120, 120, 160) }):Play()
 	end)
 
 	button.MouseLeave:Connect(function()
-		local takenBy = gameStateFolder:GetAttribute("Taken_" .. name)
-		if takenBy and takenBy ~= player.Name then return end
+		if name ~= "Sid" then
+			local takenBy = gameStateFolder:GetAttribute("Taken_" .. name)
+			if takenBy and takenBy ~= player.Name then
+				return
+			end
+		end
 		normalTween:Play()
 		TweenService:Create(buttonStroke, TweenInfo.new(0.2), { Color = Color3.fromRGB(60, 60, 80) }):Play()
 	end)
 
 	button.MouseButton1Click:Connect(function()
-		local takenBy = gameStateFolder:GetAttribute("Taken_" .. name)
-		if takenBy and takenBy ~= player.Name then return end
+		if name ~= "Sid" then
+			local takenBy = gameStateFolder:GetAttribute("Taken_" .. name)
+			if takenBy and takenBy ~= player.Name then
+				return
+			end
+		end
 
 		-- Play click flash effect
 		button.BackgroundColor3 = Color3.fromRGB(80, 80, 110)
 		task.wait(0.1)
-		
+
+		-- Mark that the player has selected a character so the UI doesn't reappear on respawn
+		player:SetAttribute("HasSelectedCharacter", true)
+
 		-- Fire spawn request to server
 		selectCharacterEvent:FireServer(name)
 
 		-- Fade out the UI smoothly
 		local fadeOverlay = TweenService:Create(overlay, TweenInfo.new(0.4), { BackgroundTransparency = 1 })
 		local fadeCard = TweenService:Create(card, TweenInfo.new(0.4), { BackgroundTransparency = 1 })
-		
+
 		-- Fade all sub-elements
 		for _, child in card:GetChildren() do
 			if child:IsA("TextLabel") then
@@ -205,7 +234,9 @@ local function createCharacterButton(name: string)
 			elseif child:IsA("Frame") then
 				for _, sub in child:GetChildren() do
 					if sub:IsA("TextButton") then
-						TweenService:Create(sub, TweenInfo.new(0.3), { TextTransparency = 1, BackgroundTransparency = 1 }):Play()
+						TweenService
+							:Create(sub, TweenInfo.new(0.3), { TextTransparency = 1, BackgroundTransparency = 1 })
+							:Play()
 						local stroke = sub:FindFirstChildOfClass("UIStroke")
 						if stroke then
 							TweenService:Create(stroke, TweenInfo.new(0.3), { Transparency = 1 }):Play()
@@ -214,7 +245,7 @@ local function createCharacterButton(name: string)
 				end
 			end
 		end
-		
+
 		local stroke = card:FindFirstChildOfClass("UIStroke")
 		if stroke then
 			TweenService:Create(stroke, TweenInfo.new(0.3), { Transparency = 1 }):Play()
@@ -222,7 +253,7 @@ local function createCharacterButton(name: string)
 
 		fadeOverlay:Play()
 		fadeCard:Play()
-		
+
 		fadeOverlay.Completed:Connect(function()
 			screenGui:Destroy()
 		end)
@@ -244,11 +275,15 @@ local function findCharacterTemplate(name: string): Instance?
 	-- 1. Try Characters folder
 	if charactersFolder then
 		local found = charactersFolder:FindFirstChild(name)
-		if found then return found end
+		if found then
+			return found
+		end
 		-- Fallback for PotatoHead if it is named "Model"
 		if name == "PotatoHead" then
 			local foundModel = charactersFolder:FindFirstChild("Model")
-			if foundModel then return foundModel end
+			if foundModel then
+				return foundModel
+			end
 		end
 	end
 	-- 2. Fallback to ReplicatedStorage directly
@@ -302,13 +337,13 @@ if not hasCharacters then
 	subtitle.Text = "Please wait, syncing character models..."
 	subtitle.TextColor3 = Color3.fromRGB(255, 100, 100)
 	printDebugDetails()
-	
+
 	-- Keep checking periodically
 	task.spawn(function()
 		local lastWarn = tick()
 		while not hasCharacters do
 			task.wait(1)
-			
+
 			if tick() - lastWarn > 5 then
 				printDebugDetails()
 				lastWarn = tick()
